@@ -324,6 +324,7 @@ fun AppleSearchPage(navController: NavHostController) {
             }
         }
         if(submitted.isNotBlank()) {
+            Spacer(Modifier.height(16.dp))
             if(library) {
                 val songs by remember(submitted) { database.search("%$submitted%") }.collectAsState(emptyList())
                 val binder = LocalPlayerServiceBinder.current

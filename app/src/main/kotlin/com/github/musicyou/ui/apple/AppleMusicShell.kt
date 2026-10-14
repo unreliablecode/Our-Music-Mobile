@@ -2,8 +2,8 @@ package com.github.musicyou.ui.apple
 
 import android.content.Context
 import android.media.AudioManager
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
@@ -30,6 +30,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -93,7 +95,6 @@ fun AppleMusicShell(navController: NavHostController, intentAction: String?, exp
     val expandedBackdrop = rememberCombinedBackdrop(backdrop, playerBackdrop)
     val media = rememberCurrentMedia()
     val menu = LocalMenuState.current
-    val binder = LocalPlayerServiceBinder.current
     var expanded by rememberSaveable { mutableStateOf(expandFromNotification) }
     var notificationOpened by rememberSaveable { mutableStateOf(false) }
     var editingBackground by rememberSaveable { mutableStateOf(false) }
@@ -102,8 +103,17 @@ fun AppleMusicShell(navController: NavHostController, intentAction: String?, exp
     val destination = entry?.destination
     val hideTabs = destination?.hasRoute<Routes.Settings>() == true || destination?.hasRoute<Routes.SettingsPage>() == true || destination?.hasRoute<Routes.Updates>() == true
     val playerPadding = if(hideTabs) 28.dp else if(media == null) 106.dp else 180.dp
-    BackHandler(expanded || menu.isDisplayed || editingBackground) {
-        when { editingBackground -> editingBackground = false; menu.isDisplayed -> menu.hide(); else -> expanded = false }
+    val playerVisibility = remember { MutableTransitionState(false) }
+    playerVisibility.targetState = expanded && media != null
+    val playerModalPresent = playerVisibility.currentState || playerVisibility.targetState || !playerVisibility.isIdle
+    val pageBlocked = playerModalPresent || menu.isDisplayed || editingBackground
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    LaunchedEffect(pageBlocked) {
+        if (pageBlocked) {
+            focusManager.clearFocus(force = true)
+            keyboard?.hide()
+        }
     }
     CompositionLocalProvider(LocalBackdrop provides backdrop,
         LocalMusicNavController provides navController,
@@ -111,33 +121,50 @@ fun AppleMusicShell(navController: NavHostController, intentAction: String?, exp
         LocalGlassStyle provides GlassStyle(background.glassEnabled, background.glassTint, background.glassBlur),
         LocalPlayerPadding provides playerPadding) {
         Box(Modifier.fillMaxSize()) {
-            Box(Modifier.fillMaxSize().layerBackdrop(backdrop)) {
-                Box(Modifier.fillMaxSize().layerBackdrop(wallpaperBackdrop)) {
-                    AppBackground(background, Modifier.fillMaxSize())
+            Box(Modifier.fillMaxSize().modalUnderlay(pageBlocked)) {
+                Box(Modifier.fillMaxSize().layerBackdrop(backdrop)) {
+                    Box(Modifier.fillMaxSize().layerBackdrop(wallpaperBackdrop)) {
+                        AppBackground(background, Modifier.fillMaxSize())
+                    }
+                    Box(Modifier.fillMaxSize().statusBarsPadding()) {
+                        CompositionLocalProvider(LocalBackdrop provides wallpaperBackdrop) {
+                            Navigation(navController, legacySheetState, intentAction)
+                        }
+                    }
                 }
-                Box(Modifier.fillMaxSize().statusBarsPadding()) {
-                    CompositionLocalProvider(LocalBackdrop provides wallpaperBackdrop) {
-                        Navigation(navController, legacySheetState, intentAction)
+                if(!hideTabs && !playerModalPresent) {
+                    Column(Modifier.align(Alignment.BottomCenter).widthIn(max = 680.dp).navigationBarsPadding().padding(horizontal = 12.dp).padding(bottom = 7.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        if(media != null) AppleMiniPlayer(media, { expanded = true })
+                        AppleTabBar(navController)
+                    }
+                }
+                if(hideTabs && !playerModalPresent) {
+                    GlassIconButton(onClick = { editingBackground = true }, modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(18.dp).size(52.dp)) {
+                        Icon(Icons.Outlined.Wallpaper, "Customize background", tint = MusicRed)
+                    }
+                }
+                if(updateState.hasAvailableUpdate && updateState.release?.versionName != dismissedUpdate && destination?.hasRoute<Routes.Updates>() != true && !pageBlocked) {
+                    GlassSurface(Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(12.dp).widthIn(max = 580.dp).fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
+                        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Our Music ${updateState.release?.versionName}", fontWeight = FontWeight.SemiBold)
+                                Text("A new version is available", fontSize = 12.sp)
+                            }
+                            TextButton(onClick = { navController.navigate(Routes.Updates) }) { Text("View", color = MusicRed) }
+                            IconButton(onClick = { dismissedUpdate = updateState.release?.versionName.orEmpty() }) { Icon(Icons.Outlined.Close, "Dismiss update") }
+                        }
                     }
                 }
             }
-            if(!hideTabs && !expanded) {
-                Column(Modifier.align(Alignment.BottomCenter).widthIn(max = 680.dp).navigationBarsPadding().padding(horizontal = 12.dp).padding(bottom = 7.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    if(media != null) AppleMiniPlayer(media, { expanded = true })
-                    AppleTabBar(navController)
+            Box(Modifier.fillMaxSize().layerBackdrop(playerBackdrop).modalUnderlay(menu.isDisplayed || editingBackground)) {
+                ModalOverlay(active = playerModalPresent, onDismiss = { expanded = false }, paneTitle = "Now playing") {
+                    AnimatedVisibility(visibleState = playerVisibility, enter = fadeIn(), exit = fadeOut()) {
+                        media?.let { AppleFullPlayer(it, { expanded = false }) }
+                    }
                 }
             }
-            if(hideTabs && !expanded) {
-                GlassIconButton(onClick = { editingBackground = true }, modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(18.dp).size(52.dp)) {
-                    Icon(Icons.Outlined.Wallpaper, "Customize background", tint = MusicRed)
-                }
-            }
-            Box(Modifier.fillMaxSize().layerBackdrop(playerBackdrop)) {
-                AnimatedVisibility(expanded && media != null, enter = fadeIn(), exit = fadeOut()) {
-                    media?.let { AppleFullPlayer(it, { expanded = false }) }
-                }
-            }
-            if(menu.isDisplayed) {
+            ModalOverlay(active = menu.isDisplayed, onDismiss = menu::hide, paneTitle = "Song options",
+                modifier = Modifier.modalUnderlay(editingBackground)) {
                 Box(Modifier.fillMaxSize().background(Color.Black.copy(.15f)).clickable { menu.hide() })
                 CompositionLocalProvider(LocalBackdrop provides if(expanded) expandedBackdrop else backdrop) {
                     GlassSurface(Modifier.align(Alignment.BottomCenter).widthIn(max = 600.dp).fillMaxWidth().navigationBarsPadding().padding(12.dp).heightIn(max = 650.dp), shape = RoundedCornerShape(28.dp)) {
@@ -148,18 +175,8 @@ fun AppleMusicShell(navController: NavHostController, intentAction: String?, exp
                     }
                 }
             }
-            if(editingBackground) BackgroundEditor(background) { editingBackground = false }
-            if(updateState.hasAvailableUpdate && updateState.release?.versionName != dismissedUpdate && destination?.hasRoute<Routes.Updates>() != true && !editingBackground && !expanded) {
-                GlassSurface(Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(12.dp).widthIn(max = 580.dp).fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
-                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Our Music ${updateState.release?.versionName}", fontWeight = FontWeight.SemiBold)
-                            Text("A new version is available", fontSize = 12.sp)
-                        }
-                        TextButton(onClick = { navController.navigate(Routes.Updates) }) { Text("View", color = MusicRed) }
-                        IconButton(onClick = { dismissedUpdate = updateState.release?.versionName.orEmpty() }) { Icon(Icons.Outlined.Close, "Dismiss update") }
-                    }
-                }
+            ModalOverlay(active = editingBackground, onDismiss = { editingBackground = false }, paneTitle = "Customize background") {
+                BackgroundEditor(background) { editingBackground = false }
             }
         }
     }

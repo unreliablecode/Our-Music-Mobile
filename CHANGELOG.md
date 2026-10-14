@@ -1,3 +1,11 @@
+# Our Music 1.0.2
+
+Back closes the full player before navigating away from the current page. Album artwork, lyrics and queue views now block touches and scrolling on the page behind them, including while the player closes.
+
+Song menus and the background editor keep their own Back behavior. Background controls are excluded from keyboard and accessibility focus while a modal is open.
+
+Search results have more space between the search field and the Songs, Albums, Artists and other type buttons.
+
 # Our Music 1.0.1
 
 Our Music now uses its own application package and signing certificate, with a standalone source repository.
