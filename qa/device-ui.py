@@ -9,7 +9,7 @@ action = sys.argv[2] if len(sys.argv) > 2 else "dump"
 adb = ["adb", "-s", serial]
 
 def run(*args):
-    return subprocess.run(adb + list(args), check=True, capture_output=True, text=True).stdout
+    return subprocess.run(adb + list(args), check=True, capture_output=True, text=True, encoding="utf-8").stdout
 
 run("shell", "rm", "-f", "/sdcard/OurMusic-ui.xml")
 dump = run("shell", "uiautomator", "dump", "/sdcard/OurMusic-ui.xml")
