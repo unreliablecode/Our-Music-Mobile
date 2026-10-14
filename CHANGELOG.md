@@ -1,3 +1,11 @@
+# Our Music 1.0.4
+
+Player options includes Ambient mode, an in app Car mode with larger controls, a live frequency spectrum and an actual stereo audio waveform. Visuals follow decoded song audio and stop when playback pauses. Ambient colors come from the current artwork.
+
+Streamed music cache can be cleared from Player options while keeping downloaded songs, your library and background photos.
+
+Streaming and downloads use matching client headers and validate fresh audio links before opening them. Expired or rejected links are refreshed once, and incomplete cached audio no longer truncates playback. When the service requires verification or restricts a track, the app shows its reason instead of a generic playback error.
+
 # Our Music 1.0.3
 
 Playback, volume and background adjustment sliders use animated glass capsules. Touching a control expands its thumb and reveals live refraction; movement responds to drag speed and settles smoothly on release.

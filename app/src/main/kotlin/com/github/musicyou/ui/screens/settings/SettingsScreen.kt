@@ -24,6 +24,7 @@ import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Wallpaper
 import androidx.compose.material.icons.rounded.SystemUpdate
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.HorizontalDivider
 import com.github.musicyou.ui.glass.AdaptiveIcon as Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -56,6 +57,9 @@ import com.github.musicyou.ui.glass.GlassSurface
 import com.github.musicyou.ui.glass.GlassToggle
 import com.github.musicyou.ui.glass.rememberBackgroundSettings
 import com.github.musicyou.ui.styling.Dimensions
+import com.github.musicyou.models.LocalMenuState
+import com.github.musicyou.ui.apple.PlayerDisplayOptions
+import com.github.musicyou.ui.apple.rememberPlayerDisplaySettings
 
 @Composable
 fun SettingsScreen(
@@ -65,6 +69,8 @@ fun SettingsScreen(
 ) {
     val playerPadding = LocalPlayerPadding.current
     val background = rememberBackgroundSettings()
+    val display = rememberPlayerDisplaySettings()
+    val menu = LocalMenuState.current
     var showBackgroundEditor by remember { mutableStateOf(false) }
 
     Box(Modifier.fillMaxSize()) {
@@ -91,6 +97,19 @@ fun SettingsScreen(
                         icon = Icons.Rounded.Wallpaper,
                         subtitle = "Your photo, your position, your atmosphere",
                         onClick = { showBackgroundEditor = true },
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
+                GlassSurface(
+                    modifier = Modifier.widthIn(max = 680.dp).fillMaxWidth(),
+                    shape = RoundedCornerShape(25.dp),
+                    tint = Color.White.copy(alpha = 0.5f),
+                ) {
+                    SettingsNavigationRow(
+                        title = "Player options",
+                        icon = Icons.Rounded.Tune,
+                        subtitle = "Ambient, Car mode, visuals and music cache",
+                        onClick = { menu.display { PlayerDisplayOptions(display, menu::hide) } },
                     )
                 }
                 Spacer(Modifier.height(10.dp))

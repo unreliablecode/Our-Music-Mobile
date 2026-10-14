@@ -17,7 +17,10 @@ data class Context(
         val userAgent: String,
         val gl: String,
         val hl: String,
-        val visitorData: String?
+        val visitorData: String?,
+        val osName: String? = null,
+        val deviceMake: String? = null,
+        val deviceModel: String? = null,
     )
 
     @Serializable

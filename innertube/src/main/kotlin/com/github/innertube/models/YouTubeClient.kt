@@ -8,7 +8,10 @@ class YouTubeClient(
     val clientId: String,
     val userAgent: String,
     val platform: String? = null,
-    val osVersion: String? = null
+    val osVersion: String? = null,
+    val osName: String? = null,
+    val deviceMake: String? = null,
+    val deviceModel: String? = null,
 ) {
     fun toContext(
         localized: Boolean = true,
@@ -23,7 +26,10 @@ class YouTubeClient(
             userAgent = userAgent,
             gl = if (localized) Locale.getDefault().country.ifBlank { "US" } else "US",
             hl = if (localized) Locale.getDefault().language.ifBlank { "en" } else "en",
-            visitorData = visitorData
+            visitorData = visitorData,
+            osName = osName,
+            deviceMake = deviceMake,
+            deviceModel = deviceModel,
         )
     )
 
@@ -41,7 +47,10 @@ class YouTubeClient(
             clientVersion = "1.02",
             clientId = "101",
             userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15",
-            osVersion = "26.5.23O47",
+            osVersion = "26.5.23O471",
+            osName = "visionOS",
+            deviceMake = "Apple",
+            deviceModel = "RealityDevice17,1",
         )
 
         val TVHTML5_SIMPLY_EMBEDDED_PLAYER = YouTubeClient(

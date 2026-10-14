@@ -56,6 +56,8 @@ import com.github.musicyou.ui.glass.AdaptiveText as Text
 import com.github.musicyou.ui.glass.AdaptiveIcon as Icon
 import com.github.musicyou.ui.navigation.Navigation
 import com.github.musicyou.ui.navigation.Routes
+import com.github.musicyou.ui.visualization.AudioVisualization
+import com.github.musicyou.ui.visualization.VisualizationMode
 import com.github.musicyou.update.rememberUpdateCoordinator
 import com.github.musicyou.utils.*
 import com.kyant.backdrop.backdrops.layerBackdrop
@@ -95,6 +97,11 @@ fun AppleMusicShell(navController: NavHostController, intentAction: String?, exp
     val playerBackdrop = rememberLayerBackdrop()
     val expandedBackdrop = rememberCombinedBackdrop(backdrop, playerBackdrop)
     val media = rememberCurrentMedia()
+    val display = rememberPlayerDisplaySettings()
+    val ambientFrame = rememberAudioVisualization(display.value.ambient && media != null)
+    val visibleReadability = if (display.value.ambient && media != null) {
+        remember(readability.palette.primary) { wallpaperReadability(listOf(Color.Black, Color.White), readability.palette.primary) }
+    } else readability
     val menu = LocalMenuState.current
     var expanded by rememberSaveable { mutableStateOf(expandFromNotification) }
     var notificationOpened by rememberSaveable { mutableStateOf(false) }
@@ -121,12 +128,14 @@ fun AppleMusicShell(navController: NavHostController, intentAction: String?, exp
         LocalWallpaperContrast provides photoContrast,
         LocalGlassStyle provides GlassStyle(background.glassEnabled, background.glassTint, background.glassBlur),
         LocalPlayerPadding provides playerPadding) {
-        ProvideWallpaperReadability(readability) {
+        ProvideWallpaperReadability(visibleReadability) {
             Box(Modifier.fillMaxSize()) {
                 Box(Modifier.fillMaxSize().modalUnderlay(pageBlocked)) {
                     Box(Modifier.fillMaxSize().layerBackdrop(backdrop)) {
                         Box(Modifier.fillMaxSize().layerBackdrop(wallpaperBackdrop)) {
-                            AppBackground(background, Modifier.fillMaxSize(), readabilityOverlay = readability.overlay)
+                            AppBackground(background, Modifier.fillMaxSize())
+                            if (display.value.ambient) media?.let { AmbientBackdrop(it, ambientFrame, Modifier.fillMaxSize()) }
+                            if (visibleReadability.overlay.alpha > 0f) Box(Modifier.fillMaxSize().background(visibleReadability.overlay))
                         }
                         Box(Modifier.fillMaxSize().statusBarsPadding()) {
                             CompositionLocalProvider(LocalBackdrop provides wallpaperBackdrop) {
@@ -244,6 +253,11 @@ fun AppleMiniPlayer(media: MediaItem, open: () -> Unit) {
 
 @Composable
 private fun AppleFullPlayer(media: MediaItem, close: () -> Unit) {
+    val display = rememberPlayerDisplaySettings()
+    if (display.value.car) {
+        CarPlayer(media, display, close)
+        return
+    }
     val binder = LocalPlayerServiceBinder.current ?: return
     val player = binder.player
     val menu = LocalMenuState.current
@@ -253,10 +267,12 @@ private fun AppleFullPlayer(media: MediaItem, close: () -> Unit) {
     var shuffled by remember { mutableStateOf(player.shuffleModeEnabled) }
     var page by rememberSaveable { mutableIntStateOf(0) }
     var seek by remember(media.mediaId) { mutableStateOf<Float?>(null) }
-    var error by remember { mutableStateOf(player.playerError?.localizedMessage) }
+    var error by remember { mutableStateOf(playbackErrorMessage(player.playerError)) }
     var queue by remember { mutableStateOf(player.currentTimeline.mediaItems) }
     var queueIndex by remember { mutableIntStateOf(player.currentMediaItemIndex) }
     var showSleepTimer by remember { mutableStateOf(false) }
+    val visualization = display.value.visualization
+    val frame = rememberAudioVisualization(visualization != VisualizationMode.OFF)
     val sleepTimerLeft by (binder.sleepTimerMillisLeft ?: flowOf(null)).collectAsState(null)
     val position by player.positionAndDurationState()
     val audio = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
@@ -266,7 +282,7 @@ private fun AppleFullPlayer(media: MediaItem, close: () -> Unit) {
     player.DisposableListener { object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) {
             playing = player.shouldBePlaying; repeat = player.repeatMode; shuffled = player.shuffleModeEnabled
-            error = player.playerError?.localizedMessage; queue = player.currentTimeline.mediaItems; queueIndex = player.currentMediaItemIndex
+            error = playbackErrorMessage(player.playerError); queue = player.currentTimeline.mediaItems; queueIndex = player.currentMediaItemIndex
         }
     } }
     GlassSurface(Modifier.fillMaxSize(), shape = RoundedCornerShape(0.dp)) {
@@ -277,6 +293,7 @@ private fun AppleFullPlayer(media: MediaItem, close: () -> Unit) {
                 GlassIconButton(onClick = { menu.display {
                     NonQueuedMediaItemMenu(mediaItem = media, onDismiss = menu::hide)
                     MenuEntry(Icons.Outlined.Schedule, "Sleep Timer", onClick = { menu.hide(); showSleepTimer = true })
+                    MenuEntry(Icons.Outlined.Tune, "Player options", onClick = { menu.display { PlayerDisplayOptions(display, menu::hide) } })
                 } }, modifier = Modifier.size(44.dp)) { Icon(Icons.Outlined.MoreHoriz, "Playback options") }
             }
             Spacer(Modifier.height(18.dp))
@@ -295,7 +312,14 @@ private fun AppleFullPlayer(media: MediaItem, close: () -> Unit) {
                             }
                         }
                     }
-                    else -> AsyncImage(media.mediaMetadata.artworkUri.thumbnail(1200), "Album artwork", Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(14.dp)), contentScale = ContentScale.Crop)
+                    else -> Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                            val edge = minOf(maxWidth, maxHeight)
+                            AsyncImage(media.mediaMetadata.artworkUri.thumbnail(1200), "Album artwork", Modifier.size(edge).clip(RoundedCornerShape(14.dp)), contentScale = ContentScale.Crop)
+                        }
+                        if (visualization != VisualizationMode.OFF) AudioVisualization(frame, visualization, playing && error == null,
+                            Modifier.fillMaxWidth().height(if (visualization == VisualizationMode.BOTH) 180.dp else 150.dp))
+                    }
                 }
             }
             Spacer(Modifier.height(22.dp))
@@ -322,7 +346,7 @@ private fun AppleFullPlayer(media: MediaItem, close: () -> Unit) {
                 Text(formatTime(position.first), fontSize = 11.sp, color = MusicSecondary)
                 Text("−${formatTime((duration - position.first).coerceAtLeast(0))}", fontSize = 11.sp, color = MusicSecondary)
             }
-            if(error != null) Text("Playback unavailable. Tap play to retry.", Modifier.padding(top = 8.dp), color = MusicRed, fontSize = 12.sp)
+            error?.let { Text(it, Modifier.padding(top = 8.dp), color = MusicRed, fontSize = 12.sp) }
             Row(Modifier.fillMaxWidth().padding(vertical = 14.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = { player.forceSeekToPrevious() }, modifier = Modifier.size(60.dp)) { Icon(Icons.Filled.SkipPrevious, "Previous song", Modifier.size(42.dp)) }
                 IconButton(onClick = { if(playing && error == null) player.pause() else { if(error != null || player.playbackState == Player.STATE_IDLE) player.prepare(); player.play() } }, modifier = Modifier.size(72.dp)) { Icon(if(playing && error == null) Icons.Filled.Pause else Icons.Filled.PlayArrow, if(playing) "Pause" else "Play", Modifier.size(58.dp)) }
@@ -353,4 +377,21 @@ private fun AppleFullPlayer(media: MediaItem, close: () -> Unit) {
 private fun formatTime(milliseconds: Long): String {
     val seconds = milliseconds.coerceAtLeast(0) / 1000
     return "${seconds / 60}:${(seconds % 60).toString().padStart(2, '0')}"
+}
+
+internal fun playbackErrorMessage(failure: Throwable?): String? {
+    if (failure == null) return null
+    val causes = generateSequence(failure) { it.cause }.take(12).toList()
+    val access = causes.filterIsInstance<com.github.innertube.requests.StreamAccessException>().firstOrNull()
+    if (access != null) return access.message
+    val providerReason = causes.filterIsInstance<androidx.media3.common.PlaybackException>()
+        .firstOrNull { it.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_REMOTE_ERROR }?.message
+    if (!providerReason.isNullOrBlank()) return providerReason
+    val response = causes.filterIsInstance<androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException>().firstOrNull()
+    return when (response?.responseCode) {
+        401, 403 -> "The music service rejected this audio link. Tap play to request a fresh link."
+        410 -> "This audio link has expired. Tap play to request a fresh link."
+        429 -> "The music service is receiving too many requests. Try again in a few minutes."
+        else -> "Playback could not start. Check your connection and tap play to retry."
+    }
 }

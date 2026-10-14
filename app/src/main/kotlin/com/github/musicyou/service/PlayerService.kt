@@ -46,7 +46,9 @@ import androidx.media3.common.audio.SonicAudioProcessor
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.cache.Cache
 import androidx.media3.datasource.cache.CacheDataSource
@@ -71,18 +73,24 @@ import androidx.media3.extractor.DefaultExtractorsFactory
 import com.github.innertube.Innertube
 import com.github.innertube.models.NavigationEndpoint
 import com.github.innertube.requests.player
+import com.github.innertube.requests.streamingHeaders
 import com.github.innertube.requests.searchPage
 import com.github.innertube.utils.from
 import com.github.musicyou.MainActivity
 import com.github.musicyou.R
+import com.github.musicyou.audio.visualization.AudioVisualizationFrame
+import com.github.musicyou.audio.visualization.RealtimeAudioVisualization
+import com.github.musicyou.audio.visualization.VisualizationAudioProcessor
+import com.github.musicyou.audio.visualization.VisualizationAudioSink
 import com.github.musicyou.database
 import com.github.musicyou.downloads.offlineFirstDataSourceFactory
 import com.github.musicyou.enums.ExoPlayerDiskCacheMaxSize
 import com.github.musicyou.models.Event
 import com.github.musicyou.models.Format
 import com.github.musicyou.models.QueuedMediaItem
+import com.github.musicyou.network.StreamLinkCache
+import com.github.musicyou.network.cachedStreamingDataSourceFactory
 import com.github.musicyou.utils.InvincibleService
-import com.github.musicyou.utils.RingBuffer
 import com.github.musicyou.utils.TimerJob
 import com.github.musicyou.utils.YouTubeRadio
 import com.github.musicyou.utils.activityPendingIntent
@@ -112,6 +120,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -121,6 +131,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapMerge
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
@@ -131,6 +142,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.io.IOException
 import kotlin.math.roundToInt
 import kotlin.system.exitProcess
 import android.os.Binder as AndroidBinder
@@ -175,6 +187,8 @@ class PlayerService : InvincibleService(), Player.Listener, PlaybackStatsListene
     private lateinit var bitmapProvider: BitmapProvider
 
     private val coroutineScope = CoroutineScope(Dispatchers.IO) + Job()
+    private val audioVisualization = RealtimeAudioVisualization()
+    private var visualizationJob: Job? = null
 
     private var volumeNormalizationJob: Job? = null
 
@@ -329,6 +343,8 @@ class PlayerService : InvincibleService(), Player.Listener, PlaybackStatsListene
 
     override fun onDestroy() {
         maybeSavePlayerQueue()
+        visualizationJob?.cancel()
+        audioVisualization.close()
 
         preferences.unregisterOnSharedPreferenceChangeListener(this)
 
@@ -390,6 +406,7 @@ class PlayerService : InvincibleService(), Player.Listener, PlaybackStatsListene
     }
 
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+        audioVisualization.clear()
         mediaItemState.update { mediaItem }
 
         maybeRecoverPlaybackError()
@@ -632,6 +649,10 @@ class PlayerService : InvincibleService(), Player.Listener, PlaybackStatsListene
 
     @Suppress("DEPRECATION")
     override fun onEvents(player: Player, events: Player.Events) {
+        if (events.contains(Player.EVENT_POSITION_DISCONTINUITY)) audioVisualization.clear()
+        if (events.containsAny(Player.EVENT_IS_PLAYING_CHANGED, Player.EVENT_PLAYBACK_STATE_CHANGED)) {
+            audioVisualization.setPlaying(player.isPlaying)
+        }
         if (player.duration != C.TIME_UNSET) {
             mediaSession.setMetadata(
                 metadataBuilder
@@ -803,99 +824,126 @@ class PlayerService : InvincibleService(), Player.Listener, PlaybackStatsListene
         }
     }
 
-    private fun createCacheDataSource(): DataSource.Factory {
-        return CacheDataSource.Factory().setCache(cache).apply {
-            setUpstreamDataSourceFactory(
-                DefaultHttpDataSource.Factory()
-                    .setConnectTimeoutMs(16000)
-                    .setReadTimeoutMs(8000)
-                    .setUserAgent("Mozilla/5.0 (Windows NT 10.0; rv:91.0) Gecko/20100101 Firefox/91.0")
-            )
-        }
-    }
-
     private fun createDataSourceFactory(): DataSource.Factory {
-        val chunkLength = 512 * 1024L
-        val ringBuffer = RingBuffer<Pair<String, Uri>?>(2) { null }
+        val links = StreamLinkCache()
 
-        val streaming = ResolvingDataSource.Factory(createCacheDataSource()) { dataSpec ->
+        val http = DefaultHttpDataSource.Factory()
+            .setConnectTimeoutMs(16000)
+            .setReadTimeoutMs(8000)
+            .setUserAgent(Innertube.streamingHeaders.getValue("User-Agent"))
+            .setDefaultRequestProperties(Innertube.streamingHeaders)
+        val resolving = ResolvingDataSource.Factory(http) { dataSpec ->
             val videoId = dataSpec.key ?: error("A key must be set")
 
-            if (cache.isCached(videoId, dataSpec.position, chunkLength)) {
-                dataSpec
-            } else {
-                when (videoId) {
-                    ringBuffer.getOrNull(0)?.first -> dataSpec.withUri(ringBuffer.getOrNull(0)!!.second)
-                    ringBuffer.getOrNull(1)?.first -> dataSpec.withUri(ringBuffer.getOrNull(1)!!.second)
-                    else -> {
-                        val urlResult = runBlocking(Dispatchers.IO) {
-                            Innertube.player(videoId = videoId)
-                        }?.mapCatching { body ->
-                            if (body.videoDetails?.videoId != videoId) {
-                                throw VideoIdMismatchException()
-                            }
-
-                            when (val status = body.playabilityStatus?.status) {
-                                "OK" -> body.streamingData?.highestQualityFormat?.let { format ->
-                                    val mediaItem = runBlocking(Dispatchers.Main) {
-                                        player.findNextMediaItemById(videoId)
-                                    }
-
-                                    if (mediaItem?.mediaMetadata?.extras?.getString("durationText") == null) {
-                                        format.approxDurationMs?.div(1000)
-                                            ?.let(DateUtils::formatElapsedTime)?.removePrefix("0")
-                                            ?.let { durationText ->
-                                                mediaItem?.mediaMetadata?.extras?.putString(
-                                                    "durationText",
-                                                    durationText
-                                                )
-                                                database.updateDurationText(videoId, durationText)
-                                            }
-                                    }
-
-                                    database.query {
-                                        mediaItem?.let(database::insert)
-
-                                        database.insert(
-                                            Format(
-                                                songId = videoId,
-                                                itag = format.itag,
-                                                mimeType = format.mimeType,
-                                                bitrate = format.bitrate,
-                                                loudnessDb = body.playerConfig?.audioConfig?.normalizedLoudnessDb,
-                                                contentLength = format.contentLength,
-                                                lastModified = format.lastModified
-                                            )
-                                        )
-                                    }
-
-                                    format.url
-                                } ?: throw PlayableFormatNotFoundException()
-
-                                "UNPLAYABLE" -> throw UnplayableException()
-                                "LOGIN_REQUIRED" -> throw LoginRequiredException()
-                                else -> throw PlaybackException(
-                                    status,
-                                    null,
-                                    PlaybackException.ERROR_CODE_REMOTE_ERROR
-                                )
-                            }
+            val link = links.get(videoId) ?: run {
+                    val linkResult = runBlocking(Dispatchers.IO) {
+                        Innertube.player(videoId = videoId)
+                    }?.mapCatching { body ->
+                        if (body.playabilityStatus?.status == "OK" && body.videoDetails?.videoId != videoId) {
+                            throw VideoIdMismatchException()
                         }
 
-                        urlResult?.getOrThrow()?.let { url ->
-                            ringBuffer.append(videoId to url.toUri())
-                            dataSpec.withUri(url.toUri())
-                                .subrange(dataSpec.uriPositionOffset, chunkLength)
-                        } ?: throw PlaybackException(
-                            null,
-                            urlResult?.exceptionOrNull(),
-                            PlaybackException.ERROR_CODE_REMOTE_ERROR
-                        )
+                        when (val status = body.playabilityStatus?.status) {
+                            "OK" -> body.streamingData?.highestQualityFormat?.let { format ->
+                                val previousItag = links.rememberedItag(videoId) ?: runBlocking(Dispatchers.IO) {
+                                    database.format(videoId).first()?.itag
+                                }
+                                val formatChanged = previousItag != null && previousItag != format.itag
+                                if (formatChanged) cache.removeResource(videoId)
+                                val mediaItem = runBlocking(Dispatchers.Main) {
+                                    player.findNextMediaItemById(videoId)
+                                }
+
+                                if (mediaItem?.mediaMetadata?.extras?.getString("durationText") == null) {
+                                    format.approxDurationMs?.div(1000)
+                                        ?.let(DateUtils::formatElapsedTime)?.removePrefix("0")
+                                        ?.let { durationText ->
+                                            mediaItem?.mediaMetadata?.extras?.putString(
+                                                "durationText",
+                                                durationText
+                                            )
+                                            database.updateDurationText(videoId, durationText)
+                                        }
+                                }
+
+                                database.query {
+                                    mediaItem?.let(database::insert)
+
+                                    database.insert(
+                                        Format(
+                                            songId = videoId,
+                                            itag = format.itag,
+                                            mimeType = format.mimeType,
+                                            bitrate = format.bitrate,
+                                            loudnessDb = body.playerConfig?.audioConfig?.normalizedLoudnessDb,
+                                            contentLength = format.contentLength,
+                                            lastModified = format.lastModified
+                                        )
+                                    )
+                                }
+
+                                format.url?.let { url ->
+                                    val link = links.put(videoId, url, format.requestHeaders, body.streamingData?.expiresInSeconds, format.itag)
+                                    if (formatChanged && dataSpec.position > 0) {
+                                        coroutineScope.launch(Dispatchers.Main) {
+                                            if (player.currentMediaItem?.mediaId == videoId) {
+                                                val index = player.currentMediaItemIndex
+                                                val position = player.currentPosition
+                                                val resume = player.playWhenReady
+                                                val queue = List(player.mediaItemCount, player::getMediaItemAt)
+                                                player.setMediaItems(queue, index, position)
+                                                player.prepare()
+                                                player.playWhenReady = resume
+                                            }
+                                        }
+                                        throw PlaybackException(
+                                            "Refreshing the audio source.",
+                                            null,
+                                            PlaybackException.ERROR_CODE_REMOTE_ERROR,
+                                        )
+                                    }
+                                    link
+                                } ?: throw PlayableFormatNotFoundException()
+                            } ?: throw PlayableFormatNotFoundException()
+
+                            else -> throw PlaybackException(
+                                body.playabilityStatus?.reason ?: when (status) {
+                                    "LOGIN_REQUIRED" -> "The music service requires sign-in for this song."
+                                    "UNPLAYABLE" -> "The music service does not make this song available."
+                                    else -> "The music service could not play this song."
+                                },
+                                null,
+                                PlaybackException.ERROR_CODE_REMOTE_ERROR
+                            )
+                        }
                     }
+
+                    linkResult?.getOrThrow() ?: throw PlaybackException(
+                        "The music service did not respond.",
+                        linkResult?.exceptionOrNull(),
+                        PlaybackException.ERROR_CODE_REMOTE_ERROR
+                    )
+            }
+            dataSpec.withUri(link.url.toUri()).withAdditionalHeaders(link.headers)
+        }
+        val upstream = DataSource.Factory {
+            val source = resolving.createDataSource()
+            object : DataSource by source {
+                override fun open(dataSpec: DataSpec): Long = try {
+                    source.open(dataSpec)
+                } catch (failure: IOException) {
+                    val rejected = generateSequence(failure as Throwable) { it.cause }
+                        .filterIsInstance<HttpDataSource.InvalidResponseCodeException>()
+                        .any { it.responseCode == 403 || it.responseCode == 410 }
+                    val mediaId = dataSpec.key
+                    if (!rejected || mediaId == null) throw failure
+                    runCatching { source.close() }
+                    links.invalidate(mediaId)
+                    source.open(dataSpec)
                 }
             }
         }
-        return offlineFirstDataSourceFactory(this, streaming)
+        return offlineFirstDataSourceFactory(this, cachedStreamingDataSourceFactory(cache, upstream))
     }
 
     private fun createMediaSourceFactory(): MediaSource.Factory {
@@ -903,18 +951,20 @@ class PlayerService : InvincibleService(), Player.Listener, PlaybackStatsListene
     }
 
     private fun createRendersFactory(): RenderersFactory {
+        val visualizationProcessor = VisualizationAudioProcessor(audioVisualization)
         val audioSink = DefaultAudioSink.Builder(applicationContext)
             .setAudioOutputProvider(
                 AudioTrackAudioOutputProvider.Builder(applicationContext).build()
             )
             .setAudioProcessorChain(
                 DefaultAudioProcessorChain(
-                    emptyArray(),
+                    arrayOf(visualizationProcessor),
                     SilenceSkippingAudioProcessor(2_000_000, 0.01f, 2_000_000, 0, 256),
                     SonicAudioProcessor()
                 )
             )
             .build()
+        val timestampedAudioSink = VisualizationAudioSink(audioSink, visualizationProcessor)
 
         return RenderersFactory { handler: Handler?, _, audioListener: AudioRendererEventListener?, _, _ ->
             arrayOf(
@@ -923,7 +973,7 @@ class PlayerService : InvincibleService(), Player.Listener, PlaybackStatsListene
                     MediaCodecSelector.DEFAULT,
                     handler,
                     audioListener,
-                    audioSink
+                    timestampedAudioSink
                 )
             )
         }
@@ -935,6 +985,35 @@ class PlayerService : InvincibleService(), Player.Listener, PlaybackStatsListene
 
         val cache: Cache
             get() = this@PlayerService.cache
+
+        val visualization: StateFlow<AudioVisualizationFrame>
+            get() = audioVisualization.visualization
+
+        fun acquireVisualization(): AutoCloseable {
+            val subscription = audioVisualization.acquire()
+            if (visualizationJob?.isActive != true) {
+                visualizationJob = coroutineScope.launch(Dispatchers.Main) {
+                    while (isActive && audioVisualization.hasObservers) {
+                        audioVisualization.setPlaying(player.isPlaying)
+                        audioVisualization.present(player.currentPosition.coerceAtLeast(0L) * 1_000L)
+                        delay(33L)
+                    }
+                }
+            }
+            return subscription
+        }
+
+        val musicCacheBytes: Long
+            get() = this@PlayerService.cache.cacheSpace
+
+        /** Removes streamed data through cache leases; permanent offline files are separate. */
+        suspend fun clearMusicCache(): Long = withContext(Dispatchers.IO) {
+            val before = this@PlayerService.cache.cacheSpace
+            for (key in this@PlayerService.cache.keys.toList()) {
+                runCatching { this@PlayerService.cache.removeResource(key) }
+            }
+            (before - this@PlayerService.cache.cacheSpace).coerceAtLeast(0L)
+        }
 
         val mediaSession
             get() = this@PlayerService.mediaSession

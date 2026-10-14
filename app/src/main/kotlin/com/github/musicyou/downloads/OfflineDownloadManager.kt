@@ -14,10 +14,12 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.util.UnstableApi
 import com.github.innertube.Innertube
 import com.github.innertube.requests.player
+import com.github.innertube.requests.StreamAccessException
 import com.github.musicyou.database
 import com.github.musicyou.utils.fetchAndSaveLyrics
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.ConcurrentHashMap
@@ -33,6 +35,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.withContext
+
+private class SongUnavailableException(message: String) : IOException(message)
 
 class OfflineDownloadManager internal constructor(private val context: Context) {
     internal val store = OfflineStore(File(context.filesDir, "offline_music"))
@@ -149,8 +153,11 @@ class OfflineDownloadManager internal constructor(private val context: Context) 
             } catch (failure: Exception) {
                 currentCoroutineContext().ensureActive()
                 if (store.record(id)?.status == DownloadStatus.CANCELED) return
-                if (attempt == 2) {
+                val unavailable = failure is SongUnavailableException ||
+                    (failure is StreamAccessException && failure.statusCode in listOf(403, 404, 410, 429))
+                if (attempt == 2 || unavailable) {
                     store.update(id) { it.copy(status = DownloadStatus.FAILED, error = failure.message?.take(180) ?: "Download failed. Tap Retry.") }
+                    return
                 } else {
                     store.update(id) { it.copy(status = DownloadStatus.DOWNLOADING, error = "Connection interrupted. Retrying…") }
                     delay((attempt + 1) * 2_000L)
@@ -164,10 +171,12 @@ class OfflineDownloadManager internal constructor(private val context: Context) 
         if (record.status == DownloadStatus.CANCELED) return
         store.update(id) { it.copy(status = DownloadStatus.DOWNLOADING, error = null) }
         val response = Innertube.player(id)?.getOrThrow() ?: error("The music service did not respond. Tap Retry.")
+        if (response.playabilityStatus?.status != "OK") {
+            throw SongUnavailableException(response.playabilityStatus?.reason ?: "The music service does not make this song available for download.")
+        }
         check(response.videoDetails?.videoId == id) { "The music service returned a different song." }
-        check(response.playabilityStatus?.status == "OK") { "This song is not available to download." }
-        val format = response.streamingData?.highestQualityFormat ?: error("No downloadable audio was found.")
-        val source = format.url ?: error("No downloadable audio was found.")
+        val format = response.streamingData?.highestQualityFormat ?: throw SongUnavailableException("No downloadable audio was found.")
+        val source = format.url ?: throw SongUnavailableException("No downloadable audio was found.")
         val partial = store.partialFile(id)
         if (record.sourceItag != null && record.sourceItag != format.itag) partial.delete()
         val duration = format.approxDurationMs ?: record.durationMs
@@ -175,7 +184,7 @@ class OfflineDownloadManager internal constructor(private val context: Context) 
         check(context.filesDir.usableSpace > remaining + 5 * 1024 * 1024) { "There is not enough free space for this song." }
         check((format.contentLength ?: 0) <= 512L * 1024 * 1024) { "This song exceeds the download size limit." }
         store.update(id) { it.copy(mimeType = format.mimeType, sourceItag = format.itag, durationMs = duration, totalBytes = format.contentLength ?: 0) }
-        transfer(id, source, partial, format.contentLength ?: 0)
+        transfer(id, source, partial, format.contentLength ?: 0, format.requestHeaders)
         currentCoroutineContext().ensureActive()
         val extractor = android.media.MediaExtractor()
         try {
@@ -192,13 +201,13 @@ class OfflineDownloadManager internal constructor(private val context: Context) 
         runCatching { localMediaItem(id)?.let { fetchAndSaveLyrics(it, duration) } }
     }
 
-    private suspend fun transfer(id: String, source: String, destination: File, expectedBytes: Long) {
+    private suspend fun transfer(id: String, source: String, destination: File, expectedBytes: Long, headers: Map<String, String>) {
         var offset = destination.takeIf { it.isFile }?.length() ?: 0
         if (expectedBytes > 0 && offset > expectedBytes) { destination.delete(); offset = 0 }
         if (expectedBytes > 0 && offset == expectedBytes) return
         val connection = (URL(source).openConnection() as HttpURLConnection).apply {
             connectTimeout = 20_000; readTimeout = 20_000
-            setRequestProperty("User-Agent", "Mozilla/5.0")
+            headers.forEach { (name, value) -> setRequestProperty(name, value) }
             setRequestProperty("Accept-Encoding", "identity")
             if (offset > 0) setRequestProperty("Range", "bytes=$offset-")
         }

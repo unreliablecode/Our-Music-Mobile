@@ -1,6 +1,7 @@
 package com.github.innertube.models
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 
 @Serializable
 data class PlayerResponse(
@@ -11,7 +12,8 @@ data class PlayerResponse(
 ) {
     @Serializable
     data class PlayabilityStatus(
-        val status: String?
+        val status: String?,
+        val reason: String? = null,
     )
 
     @Serializable
@@ -32,8 +34,18 @@ data class PlayerResponse(
     @Serializable
     data class StreamingData(
         val adaptiveFormats: List<AdaptiveFormat>?,
-        val formats: List<AdaptiveFormat>? = null
+        val formats: List<AdaptiveFormat>? = null,
+        val expiresInSeconds: Long? = null,
     ) {
+        fun withVerifiedFormat(format: AdaptiveFormat, headers: Map<String, String>): StreamingData {
+            val selected = format.copy(requestHeaders = headers)
+            val audioOnly = selected.mimeType.startsWith("audio/")
+            return copy(
+                adaptiveFormats = if (audioOnly) listOf(selected) else emptyList(),
+                formats = if (audioOnly) emptyList() else listOf(selected),
+            )
+        }
+
         val highestQualityFormat: AdaptiveFormat?
             get() {
                 val combined = adaptiveFormats.orEmpty() + formats.orEmpty()
@@ -46,7 +58,9 @@ data class PlayerResponse(
                         ?: audioFormats.find { it.itag == 139 }
                         ?: audioFormats.maxByOrNull { it.bitrate ?: 0L }
                 }
-                return combined.find { it.url != null && it.mimeType.startsWith("video/") }
+                return formats.orEmpty().find {
+                    it.url != null && it.mimeType.startsWith("video/") && (it.audioQuality != null || it.itag == 18 || it.itag == 22)
+                }
             }
 
         @Serializable
@@ -62,6 +76,7 @@ data class PlayerResponse(
             val loudnessDb: Double?,
             val audioSampleRate: Int?,
             val url: String?,
+            @Transient val requestHeaders: Map<String, String> = emptyMap(),
         )
     }
 

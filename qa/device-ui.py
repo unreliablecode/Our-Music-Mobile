@@ -17,7 +17,9 @@ if "ERROR" in dump or "dumped" not in dump:
     raise SystemExit("The screen is still changing; pause playback or inspect a screenshot before acting.")
 xml = run("shell", "cat", "/sdcard/OurMusic-ui.xml")
 root = ET.fromstring(xml[xml.index("<?xml"):])
-nodes = list(root.iter("node"))
+nodes = [node for node in root.iter("node") if node.get("package") == "net.omusic.unreliablecode"]
+if not nodes:
+    raise SystemExit("Our Music is not in the foreground; open it before running this inspection.")
 if action == "dump":
     for node in nodes:
         a = node.attrib
