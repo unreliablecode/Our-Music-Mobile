@@ -7,7 +7,7 @@
   "sha256": "9c8a0d03433575de067498e681495560c8d1d8fc00b06926c0624e0af1b9ac9b",
   "apkBytes": 3357577,
   "minSdk": 23,
-  "publishedAt": "2026-10-14T01:39:06.245019+00:00",
+  "publishedAt": "2026-10-14T01:52:43.110699+00:00",
   "changelog": "# Our Music 1.0.2\n\nBack closes the full player before navigating away from the current page. Album artwork, lyrics and queue views now block touches and scrolling on the page behind them, including while the player closes.\n\nSong menus and the background editor keep their own Back behavior. Background controls are excluded from keyboard and accessibility focus while a modal is open.\n\nSearch results have more space between the search field and the Songs, Albums, Artists and other type buttons.\n\n# Our Music 1.0.1\n\nOur Music now uses its own application package and signing certificate, with a standalone source repository.\n\nText and icons adapt to the photo behind their position. The glass navigation indicator moves smoothly between tabs, and shared controls use a consistent visual style.\n\nSongs can be downloaded into permanent private storage for offline listening. The Downloaded library shows progress, retries, cancellation and removal. Saved audio bypasses network resolution during playback.\n\nTimed lyrics follow the song, highlight the current line and support tapping a line to seek. Timing can be adjusted for each song. Saved lyrics remain available offline, with plain lyrics shown when timing is unavailable.\n\nSettings includes automatic update checks, release notes, verified APK downloads and installation through Android. Background photos can be moved and scaled with a live glass preview.",
   "releaseUrl": "https://github.com/unreliablecode/Our-Music-Mobile/releases/tag/v1.0.2"
 }
