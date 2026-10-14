@@ -12,6 +12,8 @@ To publish, update VERSION_NAME and VERSION_CODE, edit CHANGELOG.md, and push ve
 
 Published APKs are immutable. Running the workflow again for an existing version keeps its APK and generates the manifest from that exact asset. Changes to the application require a new version.
 
+The workflow installs Android command line tools explicitly before requesting SDK packages. It uses a fixed Ubuntu runner image and pinned action revisions, so it does not depend on tools being preinstalled in the runner image.
+
 The workflow requires OUR_MUSIC_KEYSTORE_BASE64, OUR_MUSIC_STORE_PASSWORD, OUR_MUSIC_KEY_ALIAS and OUR_MUSIC_KEY_PASSWORD as repository secrets. The keystore must be the same one used for the installed app. Locally, ignored keystore.properties supplies storeFile, storePassword, keyAlias and keyPassword. The corresponding environment variables override local properties during automation. Keep a private backup of the signing key; replacing it prevents existing installations from accepting updates.
 
 To generate a manifest for an already published local APK, run python scripts/create_update_manifest.py path/to/OurMusic.apk. Publish the APK before publishing its manifest. No credentials are included in the application or update manifest.
