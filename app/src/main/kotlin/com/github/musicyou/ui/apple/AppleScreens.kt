@@ -341,7 +341,7 @@ fun AppleSearchPage(navController: NavHostController) {
             val categories = listOf("Pop" to Color(0xFFE83F67), "Chill" to Color(0xFF638095), "Rock" to Color(0xFFBC4728), "Jazz" to Color(0xFF99733E), "Electronic" to Color(0xFF725DBA), "Classical" to Color(0xFF567E65), "R&B" to Color(0xFF9C4A7F), "Acoustic" to Color(0xFFB57751))
             LazyVerticalGrid(GridCells.Adaptive(150.dp), contentPadding = PaddingValues(start = 24.dp, end = 24.dp, bottom = bottom), verticalArrangement = Arrangement.spacedBy(14.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 items(categories) { (name, color) ->
-                    ContrastRegion(Modifier.fillMaxWidth().height(112.dp).clip(RoundedCornerShape(10.dp)).background(Brush.linearGradient(listOf(color, color.copy(.75f)))).clickable { query = name; submitted = name }, overlay = color, drawScrim = false) {
+                    ContrastRegion(Modifier.fillMaxWidth().height(112.dp).clip(RoundedCornerShape(10.dp)).background(color).clickable { query = name; submitted = name }, overlay = color) {
                         Icon(Icons.Outlined.MusicNote, null, Modifier.align(Alignment.TopEnd).padding(10.dp).size(60.dp), tint = Color.White.copy(.22f))
                         Text(name, Modifier.align(Alignment.BottomStart).padding(14.dp), fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color.White)
                     }

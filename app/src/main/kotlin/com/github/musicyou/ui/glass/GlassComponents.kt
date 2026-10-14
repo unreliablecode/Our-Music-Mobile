@@ -3,26 +3,21 @@ package com.github.musicyou.ui.glass
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
@@ -32,14 +27,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.emptyBackdrop
@@ -53,7 +42,6 @@ import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.highlight.HighlightStyle
 import com.kyant.backdrop.shadow.Shadow
-import kotlin.math.roundToInt
 
 /** The scene immediately behind the current glass surface, including ancestors. */
 val LocalBackdrop = staticCompositionLocalOf<Backdrop> { emptyBackdrop() }
@@ -180,76 +168,5 @@ fun GlassIconButton(
         tint = tint,
     ) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center, content = content)
-    }
-}
-
-/** iOS-style switch: a live glass thumb samples both the scene and its colored track. */
-@Composable
-fun GlassToggle(
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val ancestor = LocalBackdrop.current
-    val style = LocalGlassStyle.current
-    val trackExport = rememberLayerBackdrop()
-    val thumbBackdrop = rememberCombinedBackdrop(ancestor, trackExport)
-    val interactions = remember { MutableInteractionSource() }
-    val pressed by interactions.collectIsPressedAsState()
-    val currentChecked by rememberUpdatedState(checked)
-    val changeChecked by rememberUpdatedState(onCheckedChange)
-    val ltr = LocalLayoutDirection.current == LayoutDirection.Ltr
-    val travel = with(LocalDensity.current) { 24.dp.toPx() }
-    var dragging by remember { mutableStateOf(false) }
-    var dragFraction by remember { mutableFloatStateOf(if (checked) 1f else 0f) }
-    val fraction by animateFloatAsState(
-        if (dragging) dragFraction else if (checked) 1f else 0f,
-        spring(0.85f, 700f), label = "glass toggle position",
-    )
-    val pressure by animateFloatAsState(if (pressed || dragging) 1f else 0f, spring(0.7f, 600f), label = "glass toggle pressure")
-    val trackColor = lerp(Color(0xFF787880).copy(alpha = 0.28f), Color(0xFF34C759).copy(alpha = 0.93f), fraction)
-    Box(
-        modifier
-            .size(64.dp, 38.dp)
-            .toggleable(
-                value = checked,
-                interactionSource = interactions,
-                indication = null,
-                role = Role.Switch,
-                onValueChange = onCheckedChange,
-            )
-            .pointerInput(ltr, travel) {
-                detectHorizontalDragGestures(
-                    onDragStart = { dragging = true; dragFraction = if (currentChecked) 1f else 0f },
-                    onDragCancel = { dragging = false },
-                    onDragEnd = { changeChecked(dragFraction >= 0.5f); dragging = false },
-                ) { change, amount ->
-                    change.consume()
-                    dragFraction = (dragFraction + (if (ltr) amount else -amount) / travel).coerceIn(0f, 1f)
-                }
-            },
-        contentAlignment = Alignment.CenterStart,
-    ) {
-        Box(
-            Modifier.matchParentSize().padding(vertical = 3.dp).drawBackdrop(
-                backdrop = ancestor,
-                shape = { RoundedCornerShape(50) },
-                effects = { if (style.enabled) { blur(8.dp.toPx()); lens(6.dp.toPx(), 10.dp.toPx()) } },
-                exportedBackdrop = trackExport,
-                highlight = { Highlight(width = 0.5.dp, alpha = 0.45f) },
-                shadow = null,
-                onDrawSurface = { drawRect(trackColor) },
-            ),
-        )
-        CompositionLocalProvider(LocalBackdrop provides thumbBackdrop) {
-            GlassSurface(
-                modifier = Modifier
-                    .offset { IntOffset((with(this) { 2.dp.toPx() } + if (ltr) fraction * travel else (1f - fraction) * travel).roundToInt(), 0) }
-                    .size(36.dp, 28.dp)
-                    .graphicsLayer { scaleX = 1f + pressure * 0.18f; scaleY = 1f + pressure * 0.24f },
-                shape = RoundedCornerShape(50),
-                tint = Color.White.copy(alpha = 0.88f - pressure * 0.66f),
-            ) {}
-        }
     }
 }

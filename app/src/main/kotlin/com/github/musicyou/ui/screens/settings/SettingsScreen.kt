@@ -42,8 +42,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.disabled
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -253,8 +251,8 @@ fun SwitchSettingEntry(
     ) {
         GlassToggle(
             checked = isChecked,
-            onCheckedChange = { if (isEnabled) onCheckedChange(it) },
-            modifier = Modifier.semantics { if (!isEnabled) disabled() },
+            onCheckedChange = onCheckedChange,
+            enabled = isEnabled,
         )
     }
 }

@@ -32,8 +32,8 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 
 @Composable
-fun AppBackground(settings: BackgroundSettings, modifier: Modifier = Modifier) {
-    BackgroundLayer(settings.value, modifier)
+fun AppBackground(settings: BackgroundSettings, modifier: Modifier = Modifier, readabilityOverlay: Color = Color.Transparent) {
+    BackgroundLayer(settings.value, modifier, readabilityOverlay = readabilityOverlay)
 }
 
 /** Draws the photo itself, so every live glass layer can refract the same moving scene. */
@@ -42,6 +42,7 @@ internal fun BackgroundLayer(
     appearance: BackgroundAppearance,
     modifier: Modifier = Modifier,
     onImageSize: (IntSize) -> Unit = {},
+    readabilityOverlay: Color = Color.Transparent,
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -100,6 +101,11 @@ internal fun BackgroundLayer(
                 },
                 onError = { onImageSize(IntSize.Zero) },
             )
+        }
+        // This material is captured with the wallpaper so every refracting
+        // control and its foreground use the same visible background.
+        if (readabilityOverlay.alpha > 0f) {
+            Box(Modifier.fillMaxSize().background(readabilityOverlay))
         }
     }
 }

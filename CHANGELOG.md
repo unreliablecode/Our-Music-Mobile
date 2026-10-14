@@ -1,3 +1,11 @@
+# Our Music 1.0.3
+
+Playback, volume and background adjustment sliders use animated glass capsules. Touching a control expands its thumb and reveals live refraction; movement responds to drag speed and settles smoothly on release.
+
+Switches use the same motion and glass treatment throughout Settings, Updates and the background editor. Sliders and switches support keyboard input, accessibility actions and right to left layouts.
+
+Text uses clean lettering with consistent foreground colors. A continuous material softens busy background photos enough for readable text, replacing glyph outlines while preserving the photo and live glass effect.
+
 # Our Music 1.0.2
 
 Back closes the full player before navigating away from the current page. Album artwork, lyrics and queue views now block touches and scrolling on the page behind them, including while the player closes.

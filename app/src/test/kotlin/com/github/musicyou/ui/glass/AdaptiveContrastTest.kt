@@ -68,4 +68,78 @@ class AdaptiveContrastTest {
         assertTrue(darkPhotoPatch.minimumContrast >= 4.5f)
         assertTrue(lightPhotoPatch.minimumContrast >= 4.5f)
     }
+
+    @Test
+    fun sharedPhotoMaterialKeepsPrimarySecondaryAndAccentReadableOnActualPixels() {
+        val colors = listOf(Color.Black, Color.White, Color(0xFFE02431), Color(0xFF216FCC), Color(0xFF979797))
+        val material = wallpaperReadability(colors)
+        assertTrue(material.overlay.alpha > 0f)
+        assertTrue("The photo must remain visible through the material", material.overlay.alpha < 0.7f)
+        for (color in colors) {
+            val displayed = material.overlay.compositeOver(color)
+            for (foreground in listOf(material.palette.primary, material.palette.secondary, material.palette.accent)) {
+                assertTrue("Every semantic color is checked against the overlay actually drawn", contrastRatio(foreground, displayed) >= 4.5f)
+            }
+        }
+    }
+
+    @Test
+    fun readablePreferredColorIsKeptWithoutExtraBacking() {
+        val preferred = Color(0xFFA31731)
+        assertEquals(preferred, readableForeground(listOf(Color.White), preferred, Color.Black))
+    }
+
+    @Test
+    fun inaccessiblePreferredColorChangesAgainstExistingMaterialOnly() {
+        val photo = listOf(Color.Black, Color.White, Color(0xFF9C4520))
+        val material = wallpaperReadability(photo)
+        val requested = Color(0xFFFA2D48)
+        val foreground = readableForeground(material.samples, requested, material.palette.primary)
+        photo.forEach { pixel ->
+            assertTrue(contrastRatio(foreground, material.overlay.compositeOver(pixel)) >= 4.5f)
+        }
+    }
+
+    @Test
+    fun smallPhotoDetailMissingFromScreenGridIsCoveredBySharedMaterial() {
+        val pixels = IntArray(140) { 0xFFFFFFFF.toInt() }.apply { this[15] = 0xFF000000.toInt() }
+        val state = WallpaperContrastState().apply {
+            map = WallpaperColorMap(14, 10, IntSize(14, 10), pixels)
+            viewport = Rect(0f, 0f, 14f, 10f)
+        }
+        assertTrue(state.sample(state.viewport, Color.Transparent).all { relativeLuminance(it) > 0.9f })
+        val material = wallpaperReadability(state.sampleImageBounds())
+        pixels.forEach { pixel ->
+            assertTrue(contrastRatio(material.palette.primary, material.overlay.compositeOver(Color(pixel))) >= 4.5f)
+        }
+    }
+
+    @Test
+    fun sharedPaletteAndVeilRemainStableWhilePhotoIsRepositioned() {
+        val state = WallpaperContrastState().apply {
+            map = WallpaperColorMap(4, 1, IntSize(400, 100), intArrayOf(0xFF000000.toInt(), 0xFF1357AC.toInt(), 0xFFE6D3BC.toInt(), 0xFFFFFFFF.toInt()))
+            viewport = Rect(0f, 0f, 200f, 100f)
+        }
+        val original = wallpaperReadability(state.sampleImageBounds())
+        state.appearance = BackgroundAppearance(positionX = -1f, positionY = 1f, zoom = 2f)
+        val moved = wallpaperReadability(state.sampleImageBounds(), original.palette.primary)
+        assertEquals(original.overlay, moved.overlay)
+        assertEquals(original.palette, moved.palette)
+    }
+
+    @Test
+    fun nearbyMidtonePhotosKeepTheExistingLightOrDarkPalette() {
+        val darkInk = Color(0xFF17171B)
+        val middle = listOf(Color(0xFF787878))
+        val lighter = listOf(Color(0xFF797979))
+        val darkMaterial = wallpaperReadability(middle, darkInk)
+        val lightMaterial = wallpaperReadability(middle, Color.White)
+        assertEquals(darkInk, darkMaterial.palette.primary)
+        assertEquals(Color.White, lightMaterial.palette.primary)
+        assertEquals(darkInk, wallpaperReadability(lighter, darkMaterial.palette.primary).palette.primary)
+        assertEquals(Color.White, wallpaperReadability(lighter, lightMaterial.palette.primary).palette.primary)
+        assertTrue(contrastRatio(darkInk, darkMaterial.overlay.compositeOver(middle.first())) >= 4.5f)
+        assertTrue(contrastRatio(Color.White, lightMaterial.overlay.compositeOver(middle.first())) >= 4.5f)
+    }
+
 }

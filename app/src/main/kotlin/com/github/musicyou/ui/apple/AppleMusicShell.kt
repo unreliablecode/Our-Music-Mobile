@@ -85,6 +85,7 @@ fun rememberCurrentMedia(): MediaItem? {
 fun AppleMusicShell(navController: NavHostController, intentAction: String?, expandFromNotification: Boolean = false) {
     val background = rememberBackgroundSettings()
     val photoContrast = rememberWallpaperContrast(background.value)
+    val readability = rememberWallpaperReadability(photoContrast)
     val updates = rememberUpdateCoordinator()
     val updateState by updates.state.collectAsState()
     var dismissedUpdate by rememberSaveable { mutableStateOf("") }
@@ -120,63 +121,65 @@ fun AppleMusicShell(navController: NavHostController, intentAction: String?, exp
         LocalWallpaperContrast provides photoContrast,
         LocalGlassStyle provides GlassStyle(background.glassEnabled, background.glassTint, background.glassBlur),
         LocalPlayerPadding provides playerPadding) {
-        Box(Modifier.fillMaxSize()) {
-            Box(Modifier.fillMaxSize().modalUnderlay(pageBlocked)) {
-                Box(Modifier.fillMaxSize().layerBackdrop(backdrop)) {
-                    Box(Modifier.fillMaxSize().layerBackdrop(wallpaperBackdrop)) {
-                        AppBackground(background, Modifier.fillMaxSize())
-                    }
-                    Box(Modifier.fillMaxSize().statusBarsPadding()) {
-                        CompositionLocalProvider(LocalBackdrop provides wallpaperBackdrop) {
-                            Navigation(navController, legacySheetState, intentAction)
+        ProvideWallpaperReadability(readability) {
+            Box(Modifier.fillMaxSize()) {
+                Box(Modifier.fillMaxSize().modalUnderlay(pageBlocked)) {
+                    Box(Modifier.fillMaxSize().layerBackdrop(backdrop)) {
+                        Box(Modifier.fillMaxSize().layerBackdrop(wallpaperBackdrop)) {
+                            AppBackground(background, Modifier.fillMaxSize(), readabilityOverlay = readability.overlay)
                         }
-                    }
-                }
-                if(!hideTabs && !playerModalPresent) {
-                    Column(Modifier.align(Alignment.BottomCenter).widthIn(max = 680.dp).navigationBarsPadding().padding(horizontal = 12.dp).padding(bottom = 7.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        if(media != null) AppleMiniPlayer(media, { expanded = true })
-                        AppleTabBar(navController)
-                    }
-                }
-                if(hideTabs && !playerModalPresent) {
-                    GlassIconButton(onClick = { editingBackground = true }, modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(18.dp).size(52.dp)) {
-                        Icon(Icons.Outlined.Wallpaper, "Customize background", tint = MusicRed)
-                    }
-                }
-                if(updateState.hasAvailableUpdate && updateState.release?.versionName != dismissedUpdate && destination?.hasRoute<Routes.Updates>() != true && !pageBlocked) {
-                    GlassSurface(Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(12.dp).widthIn(max = 580.dp).fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
-                        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text("Our Music ${updateState.release?.versionName}", fontWeight = FontWeight.SemiBold)
-                                Text("A new version is available", fontSize = 12.sp)
+                        Box(Modifier.fillMaxSize().statusBarsPadding()) {
+                            CompositionLocalProvider(LocalBackdrop provides wallpaperBackdrop) {
+                                Navigation(navController, legacySheetState, intentAction)
                             }
-                            TextButton(onClick = { navController.navigate(Routes.Updates) }) { Text("View", color = MusicRed) }
-                            IconButton(onClick = { dismissedUpdate = updateState.release?.versionName.orEmpty() }) { Icon(Icons.Outlined.Close, "Dismiss update") }
+                        }
+                    }
+                    if(!hideTabs && !playerModalPresent) {
+                        Column(Modifier.align(Alignment.BottomCenter).widthIn(max = 680.dp).navigationBarsPadding().padding(horizontal = 12.dp).padding(bottom = 7.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            if(media != null) AppleMiniPlayer(media, { expanded = true })
+                            AppleTabBar(navController)
+                        }
+                    }
+                    if(hideTabs && !playerModalPresent) {
+                        GlassIconButton(onClick = { editingBackground = true }, modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(18.dp).size(52.dp)) {
+                            Icon(Icons.Outlined.Wallpaper, "Customize background", tint = MusicRed)
+                        }
+                    }
+                    if(updateState.hasAvailableUpdate && updateState.release?.versionName != dismissedUpdate && destination?.hasRoute<Routes.Updates>() != true && !pageBlocked) {
+                        GlassSurface(Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(12.dp).widthIn(max = 580.dp).fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
+                            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("Our Music ${updateState.release?.versionName}", fontWeight = FontWeight.SemiBold)
+                                    Text("A new version is available", fontSize = 12.sp)
+                                }
+                                TextButton(onClick = { navController.navigate(Routes.Updates) }) { Text("View", color = MusicRed) }
+                                IconButton(onClick = { dismissedUpdate = updateState.release?.versionName.orEmpty() }) { Icon(Icons.Outlined.Close, "Dismiss update") }
+                            }
                         }
                     }
                 }
-            }
-            Box(Modifier.fillMaxSize().layerBackdrop(playerBackdrop).modalUnderlay(menu.isDisplayed || editingBackground)) {
-                ModalOverlay(active = playerModalPresent, onDismiss = { expanded = false }, paneTitle = "Now playing") {
-                    AnimatedVisibility(visibleState = playerVisibility, enter = fadeIn(), exit = fadeOut()) {
-                        media?.let { AppleFullPlayer(it, { expanded = false }) }
-                    }
-                }
-            }
-            ModalOverlay(active = menu.isDisplayed, onDismiss = menu::hide, paneTitle = "Song options",
-                modifier = Modifier.modalUnderlay(editingBackground)) {
-                Box(Modifier.fillMaxSize().background(Color.Black.copy(.15f)).clickable { menu.hide() })
-                CompositionLocalProvider(LocalBackdrop provides if(expanded) expandedBackdrop else backdrop) {
-                    GlassSurface(Modifier.align(Alignment.BottomCenter).widthIn(max = 600.dp).fillMaxWidth().navigationBarsPadding().padding(12.dp).heightIn(max = 650.dp), shape = RoundedCornerShape(28.dp)) {
-                        Column {
-                            Box(Modifier.padding(top = 12.dp, bottom = 6.dp).size(34.dp, 4.dp).align(Alignment.CenterHorizontally).clip(CircleShape).background(MusicSecondary.copy(.45f)))
-                            menu.content()
+                Box(Modifier.fillMaxSize().layerBackdrop(playerBackdrop).modalUnderlay(menu.isDisplayed || editingBackground)) {
+                    ModalOverlay(active = playerModalPresent, onDismiss = { expanded = false }, paneTitle = "Now playing") {
+                        AnimatedVisibility(visibleState = playerVisibility, enter = fadeIn(), exit = fadeOut()) {
+                            media?.let { AppleFullPlayer(it, { expanded = false }) }
                         }
                     }
                 }
-            }
-            ModalOverlay(active = editingBackground, onDismiss = { editingBackground = false }, paneTitle = "Customize background") {
-                BackgroundEditor(background) { editingBackground = false }
+                ModalOverlay(active = menu.isDisplayed, onDismiss = menu::hide, paneTitle = "Song options",
+                    modifier = Modifier.modalUnderlay(editingBackground)) {
+                    Box(Modifier.fillMaxSize().background(Color.Black.copy(.15f)).clickable { menu.hide() })
+                    CompositionLocalProvider(LocalBackdrop provides if(expanded) expandedBackdrop else backdrop) {
+                        GlassSurface(Modifier.align(Alignment.BottomCenter).widthIn(max = 600.dp).fillMaxWidth().navigationBarsPadding().padding(12.dp).heightIn(max = 650.dp), shape = RoundedCornerShape(28.dp)) {
+                            Column {
+                                Box(Modifier.padding(top = 12.dp, bottom = 6.dp).size(34.dp, 4.dp).align(Alignment.CenterHorizontally).clip(CircleShape).background(MusicSecondary.copy(.45f)))
+                                menu.content()
+                            }
+                        }
+                    }
+                }
+                ModalOverlay(active = editingBackground, onDismiss = { editingBackground = false }, paneTitle = "Customize background") {
+                    BackgroundEditor(background) { editingBackground = false }
+                }
             }
         }
     }
@@ -306,8 +309,15 @@ private fun AppleFullPlayer(media: MediaItem, close: () -> Unit) {
                 }
             }
             val duration = position.second.takeIf { it > 0 } ?: 1L
-            Slider(seek ?: (position.first.toFloat() / duration).coerceIn(0f, 1f), { seek = it }, onValueChangeFinished = { seek?.let { player.seekTo((it * duration).toLong()) }; seek = null },
-                colors = SliderDefaults.colors(thumbColor = MusicSecondary, activeTrackColor = MusicSecondary, inactiveTrackColor = MusicSecondary.copy(.14f)))
+            GlassSlider(
+                value = seek ?: (position.first.toFloat() / duration).coerceIn(0f, 1f),
+                onValueChange = { seek = it },
+                onValueChangeFinished = { seek?.let { player.seekTo((it * duration).toLong()) }; seek = null },
+                onValueChangeCanceled = { seek = null },
+                enabled = position.second > 0,
+                contentDescription = "Playback position",
+                activeTrackColor = adaptiveContentColor(MusicSecondary),
+            )
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(formatTime(position.first), fontSize = 11.sp, color = MusicSecondary)
                 Text("−${formatTime((duration - position.first).coerceAtLeast(0))}", fontSize = 11.sp, color = MusicSecondary)
@@ -320,7 +330,13 @@ private fun AppleFullPlayer(media: MediaItem, close: () -> Unit) {
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.VolumeDown, null, Modifier.size(20.dp), tint = MusicSecondary)
-                Slider(volume, { volume = it; audio.setStreamVolume(AudioManager.STREAM_MUSIC, (it * maxVolume).toInt(), 0) }, Modifier.weight(1f), colors = SliderDefaults.colors(thumbColor = MusicSecondary, activeTrackColor = MusicSecondary, inactiveTrackColor = MusicSecondary.copy(.14f)))
+                GlassSlider(
+                    value = volume,
+                    onValueChange = { volume = it; audio.setStreamVolume(AudioManager.STREAM_MUSIC, (it * maxVolume).toInt(), 0) },
+                    modifier = Modifier.weight(1f),
+                    contentDescription = "Volume",
+                    activeTrackColor = adaptiveContentColor(MusicSecondary),
+                )
                 Icon(Icons.Outlined.VolumeUp, null, Modifier.size(20.dp), tint = MusicSecondary)
             }
             Row(Modifier.fillMaxWidth().padding(bottom = 14.dp, top = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {

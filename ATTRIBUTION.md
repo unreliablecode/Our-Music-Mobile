@@ -10,6 +10,9 @@ Our Music is an independent derivative application. Its application ID is
   commit `65ab177e90e5c1d8c62e70cf7755841982da65f6`, licensed under Apache 2.0.
   The original license is retained in `backdrop/LICENSE`; adaptation details are
   documented in `backdrop/UPSTREAM.md`.
+  Our Music also adapts the catalog's LiquidSlider, LiquidToggle and damped drag
+  animation for its player and settings controls, with Android input and
+  accessibility support.
 - Request serialization and locale corrections follow the changes proposed in
   [Music You pull request 112](https://github.com/DanielSevillano/music-you/pull/112).
 

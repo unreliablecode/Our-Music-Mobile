@@ -24,16 +24,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.compositeOver
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -48,7 +42,6 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.TextUnit
-import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.max
@@ -59,6 +52,12 @@ import kotlin.math.roundToInt
 private val NeutralWallpaper = Color(0xFFF8F7F5)
 private val ReadableInk = Color(0xFF17171B)
 private val CoralAccent = Color(0xFFFA2D48)
+private val DefaultWallpaperSamples = listOf(
+    NeutralWallpaper,
+    Color(0xFFFBFBFA),
+    Color(0xFFF5F3F2),
+    Color(0xFFFBE9ED).copy(alpha = 0.48f).compositeOver(Color(0xFFF5F3F2)),
+)
 
 @Immutable
 data class ContrastPalette(
@@ -70,7 +69,36 @@ data class ContrastPalette(
 val LocalContrastPalette = staticCompositionLocalOf { ContrastPalette() }
 val LocalContrastOverlay = staticCompositionLocalOf { Color.Transparent }
 val LocalWallpaperContrast = staticCompositionLocalOf { WallpaperContrastState() }
-private val LocalContrastSamples = staticCompositionLocalOf { listOf(NeutralWallpaper) }
+private val LocalContrastSamples = staticCompositionLocalOf { DefaultWallpaperSamples }
+
+/** A single readable material for the visible wallpaper, shared by all page typography. */
+@Immutable
+data class WallpaperReadability internal constructor(
+    val overlay: Color,
+    val palette: ContrastPalette,
+    internal val samples: List<Color>,
+)
+
+/** The returned overlay must be drawn above the photo before it is captured for glass. */
+@Composable
+fun rememberWallpaperReadability(state: WallpaperContrastState): WallpaperReadability {
+    val colors = remember(state.map, state.appearance.imageUri) { state.sampleImageBounds() }
+    var previousPrimary by remember(state) { mutableStateOf(Color.Unspecified) }
+    val material = remember(colors, previousPrimary) { wallpaperReadability(colors, previousPrimary) }
+    SideEffect { previousPrimary = material.palette.primary }
+    return material
+}
+
+@Composable
+fun ProvideWallpaperReadability(material: WallpaperReadability, content: @Composable () -> Unit) {
+    CompositionLocalProvider(
+        LocalContentColor provides material.palette.primary,
+        LocalContrastPalette provides material.palette,
+        LocalContrastOverlay provides material.overlay,
+        LocalContrastSamples provides material.samples,
+        content = content,
+    )
+}
 
 @Stable
 class WallpaperContrastState internal constructor() {
@@ -81,7 +109,7 @@ class WallpaperContrastState internal constructor() {
     internal fun sample(bounds: Rect, overlay: Color): List<Color> {
         val image = map
         if (image == null || viewport.width <= 0f || viewport.height <= 0f) {
-            return listOf(overlay.compositeOver(NeutralWallpaper))
+            return DefaultWallpaperSamples.map { overlay.compositeOver(it) }
         }
         val screen = IntSize(viewport.width.roundToInt(), viewport.height.roundToInt())
         val extent = backgroundImageExtent(screen, image.sourceSize, appearance.zoom)
@@ -97,6 +125,36 @@ class WallpaperContrastState internal constructor() {
             val pixel = Color(image.pixels[imageY * image.width + imageX]).compositeOver(NeutralWallpaper)
             samples.add(overlay.compositeOver(pixel))
         }
+        return samples
+    }
+
+    /** Whole-image bounds keep the shared material stable during scrolling, pan and zoom. */
+    internal fun sampleImageBounds(): List<Color> {
+        val image = map ?: return if (appearance.imageUri == null) DefaultWallpaperSamples else listOf(Color.Black, Color.White)
+        var minRed = 1f
+        var minGreen = 1f
+        var minBlue = 1f
+        var maxRed = 0f
+        var maxGreen = 0f
+        var maxBlue = 0f
+        for (pixel in image.pixels) {
+            val color = Color(pixel).compositeOver(NeutralWallpaper)
+            minRed = min(minRed, color.red)
+            minGreen = min(minGreen, color.green)
+            minBlue = min(minBlue, color.blue)
+            maxRed = max(maxRed, color.red)
+            maxGreen = max(maxGreen, color.green)
+            maxBlue = max(maxBlue, color.blue)
+        }
+        val samples = ArrayList<Color>(37)
+        for (row in 0..4) for (column in 0..6) {
+            val x = (column * (image.width - 1) / 6).coerceIn(0, image.width - 1)
+            val y = (row * (image.height - 1) / 4).coerceIn(0, image.height - 1)
+            samples.add(Color(image.pixels[y * image.width + x]).compositeOver(NeutralWallpaper))
+        }
+        // These conservative channel bounds cover tiny details and every future crop.
+        samples.add(Color(minRed, minGreen, minBlue))
+        samples.add(Color(maxRed, maxGreen, maxBlue))
         return samples
     }
 }
@@ -171,13 +229,7 @@ fun ContrastRegion(
     val primary = remember(samples) { resolveContrast(samples) }
     SideEffect { onScrimChanged(primary.scrim) }
     val backedSamples = if (primary.scrim.alpha > 0f) samples.map { primary.scrim.compositeOver(it) } else samples
-    val palette = remember(backedSamples, primary.foreground) {
-        ContrastPalette(
-            primary = primary.foreground,
-            secondary = resolveContrast(backedSamples, Color(0xFF77777D)).foreground,
-            accent = resolveContrast(backedSamples, CoralAccent).foreground,
-        )
-    }
+    val palette = remember(backedSamples, primary.foreground) { contrastPalette(backedSamples, primary.foreground) }
     val effectiveOverlay = primary.scrim.compositeOver(combined)
     Box(
         modifier = modifier
@@ -196,11 +248,14 @@ fun ContrastRegion(
 }
 
 @Composable
-fun adaptiveContentColor(preferred: Color = Color.Unspecified): Color =
-    if (preferred == Color.Unspecified) LocalContrastPalette.current.primary
-    else resolveContrast(LocalContrastSamples.current, preferred).foreground
+fun adaptiveContentColor(preferred: Color = Color.Unspecified): Color {
+    val primary = LocalContrastPalette.current.primary
+    if (preferred == Color.Unspecified) return primary
+    val samples = LocalContrastSamples.current
+    return remember(samples, preferred, primary) { readableForeground(samples, preferred, primary) }
+}
 
-/** Text adapts to its own position, including image pan, zoom and scrolling. */
+/** Typography shares the palette of the material actually drawn behind its region. */
 @Composable
 fun AdaptiveText(
     text: String,
@@ -221,17 +276,12 @@ fun AdaptiveText(
     onTextLayout: ((TextLayoutResult) -> Unit)? = null,
     style: TextStyle = LocalTextStyle.current,
 ) {
-    val state = LocalWallpaperContrast.current
-    val overlay = LocalContrastOverlay.current
-    var bounds by remember { mutableStateOf(Rect.Zero) }
     val preferred = if (color != Color.Unspecified) color else style.color
-    val resolution = remember(state.map, state.appearance, state.viewport, bounds, overlay, preferred) {
-        resolveContrast(state.sample(bounds, overlay), preferred)
-    }
+    val foreground = adaptiveContentColor(preferred)
     MaterialText(
         text = text,
-        modifier = modifier.onGloballyPositioned { bounds = it.boundsInWindow() }.contrastOutline(resolution.scrim),
-        color = resolution.foreground,
+        modifier = modifier,
+        color = foreground,
         fontSize = fontSize,
         fontStyle = fontStyle,
         fontWeight = fontWeight,
@@ -256,40 +306,72 @@ fun AdaptiveIcon(
     modifier: Modifier = Modifier,
     tint: Color = Color.Unspecified,
 ) {
-    val state = LocalWallpaperContrast.current
-    val overlay = LocalContrastOverlay.current
-    var bounds by remember { mutableStateOf(Rect.Zero) }
-    val resolution = remember(state.map, state.appearance, state.viewport, bounds, overlay, tint) {
-        resolveContrast(state.sample(bounds, overlay), tint)
-    }
     MaterialIcon(
         imageVector = imageVector,
         contentDescription = contentDescription,
-        modifier = modifier.onGloballyPositioned { bounds = it.boundsInWindow() }.contrastOutline(resolution.scrim),
-        tint = resolution.foreground,
+        modifier = modifier,
+        tint = adaptiveContentColor(tint),
     )
 }
 
-/** A narrow glyph halo keeps mixed photographic edges readable without adding label boxes. */
-private fun Modifier.contrastOutline(backing: Color): Modifier = drawWithContent {
-    if (backing.alpha > 0f) {
-        val width = 0.7.dp.toPx()
-        val paint = Paint().apply { colorFilter = ColorFilter.tint(backing.copy(alpha = 0.88f), BlendMode.SrcIn) }
-        val area = Rect(-width, -width, size.width + width, size.height + width)
-        val offsets = listOf(
-            Offset(-width, 0f), Offset(width, 0f), Offset(0f, -width), Offset(0f, width),
-            Offset(-width, -width), Offset(width, -width), Offset(-width, width), Offset(width, width),
-        )
-        for (offset in offsets) drawIntoCanvas { canvas ->
-            canvas.save()
-            canvas.translate(offset.x, offset.y)
-            canvas.saveLayer(area, paint)
-            drawContent()
-            canvas.restore()
-            canvas.restore()
+/** Selects a foreground against existing material, without inventing additional backing. */
+internal fun readableForeground(
+    colors: List<Color>,
+    preferred: Color,
+    fallback: Color,
+    minimum: Float = 4.5f,
+): Color {
+    val backgrounds = colors.ifEmpty { listOf(NeutralWallpaper) }
+    val opaque = preferred.copy(alpha = 1f)
+    fun ratio(color: Color) = backgrounds.minOf { contrastRatio(color, it) }
+    if (ratio(opaque) >= minimum) return opaque
+    val targets = listOf(fallback, ReadableInk, Color.White).distinct()
+    var closest: Color? = null
+    var smallestShift = Float.POSITIVE_INFINITY
+    for (target in targets) {
+        if (ratio(target) < minimum) continue
+        var low = 0f
+        var high = 1f
+        repeat(12) {
+            val mid = (low + high) / 2f
+            if (ratio(lerp(opaque, target, mid)) >= minimum) high = mid else low = mid
+        }
+        if (high < smallestShift) {
+            smallestShift = high
+            closest = lerp(opaque, target, (high + 0.002f).coerceAtMost(1f))
         }
     }
-    drawContent()
+    return closest ?: targets.maxBy { ratio(it) }
+}
+
+private fun contrastPalette(colors: List<Color>, primary: Color) = ContrastPalette(
+    primary = primary,
+    secondary = readableForeground(colors, Color(0xFF77777D), primary),
+    accent = readableForeground(colors, CoralAccent, primary),
+)
+
+/** Keeps light/dark typography stable while nearby photo crops change slightly. */
+internal fun wallpaperReadability(colors: List<Color>, previousPrimary: Color = Color.Unspecified): WallpaperReadability {
+    val backgrounds = colors.ifEmpty { listOf(NeutralWallpaper) }
+    fun material(foreground: Color, backing: Color): ContrastResolution {
+        fun ratio(alpha: Float) = backgrounds.minOf { contrastRatio(foreground, backing.copy(alpha = alpha).compositeOver(it)) }
+        if (ratio(0f) >= 4.5f) return ContrastResolution(foreground, Color.Transparent, ratio(0f))
+        var low = 0f
+        var high = 1f
+        repeat(12) {
+            val mid = (low + high) / 2f
+            if (ratio(mid) >= 4.5f) high = mid else low = mid
+        }
+        val overlay = backing.copy(alpha = (high + 0.025f).coerceAtMost(1f))
+        return ContrastResolution(foreground, overlay, ratio(overlay.alpha))
+    }
+    val darkInk = material(ReadableInk, Color.White)
+    val lightInk = material(Color.White, Color.Black)
+    val best = if (darkInk.scrim.alpha <= lightInk.scrim.alpha) darkInk else lightInk
+    val previous = when (previousPrimary) { ReadableInk -> darkInk; Color.White -> lightInk; else -> null }
+    val chosen = previous?.takeIf { it.scrim.alpha <= best.scrim.alpha + 0.08f } ?: best
+    val backed = backgrounds.map { chosen.scrim.compositeOver(it) }
+    return WallpaperReadability(chosen.scrim, contrastPalette(backed, chosen.foreground), backed)
 }
 
 internal data class ContrastResolution(val foreground: Color, val scrim: Color, val minimumContrast: Float)
