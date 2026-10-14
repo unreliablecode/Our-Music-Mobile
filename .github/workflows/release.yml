@@ -76,10 +76,33 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add update.json
-          git commit -m 'Publish release manifest' || exit 0
-          git pull --rebase origin main
-          git push origin HEAD:main
+          candidate_manifest="$RUNNER_TEMP/our-music-update.json"
+          cp update.json "$candidate_manifest"
+          git restore update.json
+          for attempt in 1 2 3; do
+            git fetch origin main
+            git switch --detach origin/main
+            if ! python - "$candidate_manifest" <<'PY'
+          import json, sys
+          from pathlib import Path
+          candidate = json.loads(Path(sys.argv[1]).read_text())
+          properties = dict(line.split('=', 1) for line in Path('version.properties').read_text().splitlines() if '=' in line)
+          matches = int(properties['VERSION_CODE']) == candidate['versionCode'] and properties['VERSION_NAME'] == candidate['versionName']
+          if not matches:
+              print('Source version has changed; keeping the current update manifest.')
+          raise SystemExit(0 if matches else 1)
+          PY
+            then
+              exit 0
+            fi
+            cp "$candidate_manifest" update.json
+            git add update.json
+            if git diff --cached --quiet; then exit 0; fi
+            git commit -m 'Publish release manifest'
+            if git push origin HEAD:main; then exit 0; fi
+          done
+          echo 'The update manifest could not be published after three attempts.'
+          exit 1
       - name: Remove signing key
         if: always()
         run: rm -f "$OUR_MUSIC_STORE_FILE"
