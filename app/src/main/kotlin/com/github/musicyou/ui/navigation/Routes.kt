@@ -1,0 +1,59 @@
+package com.github.musicyou.ui.navigation
+
+import kotlinx.serialization.Serializable
+
+sealed class Routes {
+    @Serializable
+    data object Home
+
+    @Serializable
+    data object New
+
+    @Serializable
+    data object Radio
+
+    @Serializable
+    data object Library
+
+    @Serializable
+    data object Downloads
+
+    @Serializable
+    data object Songs
+
+    @Serializable
+    data object Artists
+
+    @Serializable
+    data object Albums
+
+    @Serializable
+    data object Playlists
+
+    @Serializable
+    data class Artist(val id: String)
+
+    @Serializable
+    data class Album(val id: String)
+
+    @Serializable
+    data class Playlist(val id: String)
+
+    @Serializable
+    data object Settings
+
+    @Serializable
+    data object Updates
+
+    @Serializable
+    data class SettingsPage(val index: Int)
+
+    @Serializable
+    data object Search
+
+    @Serializable
+    data class BuiltInPlaylist(val index: Int)
+
+    @Serializable
+    data class LocalPlaylist(val id: Long)
+}
