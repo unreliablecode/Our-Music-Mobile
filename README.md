@@ -27,6 +27,10 @@ These screens were captured from the app on a Samsung Galaxy Z Fold6. The backgr
   <img src="docs/screenshots/car.png" width="240" alt="Car mode with larger playback controls">
 </p>
 
+<p>
+  <img src="docs/screenshots/scope.png" width="760" alt="Expanded oscilloscope with stereo traces, trigger status and digital audio measurements">
+</p>
+
 ## Installation
 
 Download the APK from the repository's Releases page and open it on an Android device. Android may ask you to allow installation from that source. The application package is `net.omusic.unreliablecode`.
