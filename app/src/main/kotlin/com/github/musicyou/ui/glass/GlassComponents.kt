@@ -1,10 +1,5 @@
 package com.github.musicyou.ui.glass
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,9 +21,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.compositeOver
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.emptyBackdrop
@@ -153,17 +146,13 @@ fun GlassIconButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     tint: Color = Color.Unspecified,
+    enabled: Boolean = true,
     content: @Composable BoxScope.() -> Unit,
 ) {
-    val interactions = remember { MutableInteractionSource() }
-    val pressed by interactions.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed) 0.92f else 1f, spring(0.7f, 500f), label = "glass press")
     GlassSurface(
-        modifier = modifier
-            .size(44.dp)
-            .graphicsLayer { scaleX = scale; scaleY = scale }
-            .clip(RoundedCornerShape(50))
-            .clickable(interactionSource = interactions, indication = null, role = Role.Button, onClick = onClick),
+        modifier = modifier.size(44.dp)
+            .glassClickable(enabled = enabled, pressedScale = 0.92f, onClick = onClick)
+            .clip(RoundedCornerShape(50)),
         shape = RoundedCornerShape(50),
         tint = tint,
     ) {

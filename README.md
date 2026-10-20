@@ -8,7 +8,11 @@ The glass controls refract live content, including other glass surfaces beneath 
 
 Browse music, build playlists, save favorites and manage the playback queue. Download songs for offline listening. Synchronized lyrics highlight the current line and follow playback when timing is available. Background playback and queue controls are included. Availability depends on the music service and may vary by track.
 
-Player options offers Ambient mode, with artwork colors that respond to the music, and Car mode, with larger playback controls. The frequency spectrum and stereo waveform use the decoded audio being played. They pause with the song and can be enabled separately or together.
+Player options offers Ambient mode, with artwork colors that respond to the music, and Car mode, with larger playback controls. The frequency spectrum, stereo waveform and oscilloscope use decoded audio with a 60 FPS presentation target. Visuals pause with the song; the spectrum and waveform can also be shown together.
+
+The oscilloscope has adjustable time and amplitude scales, trigger controls, measurement cursors and Hold. Its grid shows digital full scale by default. Voltage labels require a calibration factor supplied by the user; the app does not measure the physical speaker or headphone output.
+
+Lyrics style can be changed in Player options. Default keeps classic line highlighting, while Animated smooth adds gentle transitions and flowing movement. You can browse the lyrics and return to the current line with Follow.
 
 You can clear streamed music from the cache in Player options. Downloaded songs, your library and background photos stay on the device. Tracks that require service verification remain subject to those restrictions; the player shows the reason when access is unavailable.
 

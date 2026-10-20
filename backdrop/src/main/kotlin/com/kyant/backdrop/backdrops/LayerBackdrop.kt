@@ -37,6 +37,8 @@ class LayerBackdrop internal constructor(
     internal val onDraw: ContentDrawScope.() -> Unit
 ) : Backdrop {
 
+    internal val recordsContent: Boolean get() = onDraw === DefaultOnDraw
+
     override val isCoordinatesDependent: Boolean = true
 
     internal var layerCoordinates: LayoutCoordinates? by mutableStateOf(null)

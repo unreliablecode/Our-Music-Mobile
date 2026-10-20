@@ -100,6 +100,7 @@ class AudioFrameAnalyzer(
             spectrum = spectrum,
             frequenciesHz = centers,
             waveformChannels = waveform,
+            oscilloscope = oscilloscope(samples),
             rms = sqrt(squareSum / samples.size).toFloat(),
             peak = peak,
             ready = true,
@@ -107,6 +108,13 @@ class AudioFrameAnalyzer(
     }
 
     private fun finiteSample(value: Float) = if (value.isFinite()) value.coerceIn(-1f, 1f) else 0f
+
+    private fun oscilloscope(samples: FloatArray): AudioOscilloscopeFrame {
+        val channels = List(min(channelCount, 2)) { channel ->
+            AudioOscilloscopeChannel(FloatArray(fftSize) { index -> finiteSample(samples[index * channelCount + channel]) })
+        }
+        return OscilloscopeAcquisition.capture(channels, sampleRate)
+    }
 
     private fun fft(real: DoubleArray, imaginary: DoubleArray) {
         var reversed = 0
@@ -154,6 +162,6 @@ class AudioFrameAnalyzer(
 
     companion object {
         const val WINDOW_SIZE = 4096
-        const val HOP_SIZE = 1024
+        const val VISUALIZATION_RATE = 60
     }
 }

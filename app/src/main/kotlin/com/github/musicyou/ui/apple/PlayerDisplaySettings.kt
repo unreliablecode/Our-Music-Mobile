@@ -15,6 +15,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.musicyou.LocalPlayerServiceBinder
 import com.github.musicyou.ui.glass.GlassToggle
+import com.github.musicyou.ui.glass.glassClickable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import com.github.musicyou.ui.glass.AdaptiveIcon
 import com.github.musicyou.ui.glass.AdaptiveText as Text
 import com.github.musicyou.ui.visualization.VisualizationMode
 import kotlinx.coroutines.launch
@@ -25,8 +33,11 @@ internal data class PlayerDisplayAppearance(
     val car: Boolean = false,
     val spectrum: Boolean = false,
     val waveform: Boolean = false,
+    val oscilloscope: Boolean = false,
+    val lyricsStyle: LyricsStyle = LyricsStyle.DEFAULT,
 ) {
     val visualization: VisualizationMode get() = when {
+        oscilloscope -> VisualizationMode.OSCILLOSCOPE
         spectrum && waveform -> VisualizationMode.BOTH
         spectrum -> VisualizationMode.SPECTRUM
         waveform -> VisualizationMode.WAVEFORM
@@ -42,13 +53,17 @@ internal class PlayerDisplaySettings(context: Context) {
         car = preferences.getBoolean("car", false),
         spectrum = preferences.getBoolean("spectrum", false),
         waveform = preferences.getBoolean("waveform", false),
+        oscilloscope = preferences.getBoolean("oscilloscope", false),
+        lyricsStyle = LyricsStyle.fromPreference(preferences.getString("lyrics_style", null)),
     ))
         private set
 
     fun update(appearance: PlayerDisplayAppearance) {
         preferences.edit().putBoolean("ambient", appearance.ambient)
             .putBoolean("car", appearance.car).putBoolean("spectrum", appearance.spectrum)
-            .putBoolean("waveform", appearance.waveform).apply()
+            .putBoolean("waveform", appearance.waveform)
+            .putBoolean("oscilloscope", appearance.oscilloscope)
+            .putString("lyrics_style", appearance.lyricsStyle.preferenceValue).apply()
         value = appearance
     }
 }
@@ -86,10 +101,31 @@ internal fun PlayerDisplayOptions(settings: PlayerDisplaySettings, onDismiss: ()
             settings.update(appearance.copy(car = it))
         }
         PlayerOption("Equalizer visualization", "Live frequency spectrum", appearance.spectrum) {
-            settings.update(appearance.copy(spectrum = it))
+            settings.update(appearance.copy(spectrum = it, oscilloscope = false))
         }
         PlayerOption("Audio waveform", "The actual sound, shown in real time", appearance.waveform) {
-            settings.update(appearance.copy(waveform = it))
+            settings.update(appearance.copy(waveform = it, oscilloscope = false))
+        }
+        PlayerOption("Oscilloscope", "A live virtual screen of the decoded audio", appearance.oscilloscope) {
+            settings.update(appearance.copy(oscilloscope = it, spectrum = if (it) false else appearance.spectrum,
+                waveform = if (it) false else appearance.waveform))
+        }
+        Spacer(Modifier.height(14.dp))
+        Text("Lyrics style", fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+        Column(Modifier.fillMaxWidth().selectableGroup()) {
+            LyricsStyle.entries.forEach { style ->
+                val selected = appearance.lyricsStyle == style
+                Row(Modifier.fillMaxWidth().semantics { this.selected = selected }
+                    .glassClickable(role = Role.RadioButton) { settings.update(appearance.copy(lyricsStyle = style)) }
+                    .padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(if (style == LyricsStyle.DEFAULT) "Default" else "Animated smooth", fontSize = 16.sp)
+                        Text(if (style == LyricsStyle.DEFAULT) "Classic line highlighting" else "Gentle transitions and flowing movement",
+                            fontSize = 12.sp, color = MusicSecondary)
+                    }
+                    if (selected) AdaptiveIcon(Icons.Rounded.Check, "Selected lyrics style", tint = MusicRed)
+                }
+            }
         }
         Spacer(Modifier.height(14.dp))
         Text("Music cache", fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
@@ -114,7 +150,7 @@ internal fun PlayerDisplayOptions(settings: PlayerDisplaySettings, onDismiss: ()
 
 @Composable
 private fun PlayerOption(title: String, detail: String, enabled: Boolean, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable { onChange(!enabled) }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().glassClickable { onChange(!enabled) }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f).padding(end = 12.dp)) {
             Text(title, fontSize = 16.sp, fontWeight = FontWeight.Medium)
             Text(detail, fontSize = 12.sp, color = MusicSecondary)

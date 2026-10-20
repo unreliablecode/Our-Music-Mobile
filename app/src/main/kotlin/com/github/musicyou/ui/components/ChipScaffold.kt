@@ -5,11 +5,13 @@ import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
-import com.github.musicyou.ui.glass.GlassSurface
+import com.github.musicyou.ui.glass.GlassButton
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import com.github.musicyou.ui.apple.MusicRed
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -43,8 +45,14 @@ fun ChipScaffold(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 tabColumnContent.forEachIndexed { index, section ->
-                    GlassSurface(shape = RoundedCornerShape(50), tint = if(index == tabIndex) MusicRed.copy(alpha = 0.12f) else Color.Unspecified) {
-                        Row(Modifier.clickable { onTabChanged(index) }.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    GlassButton(
+                        onClick = { onTabChanged(index) },
+                        modifier = Modifier.semantics { selected = index == tabIndex },
+                        shape = RoundedCornerShape(50),
+                        tint = if(index == tabIndex) MusicRed.copy(alpha = 0.12f) else Color.Unspecified,
+                        role = Role.Tab,
+                    ) {
+                        Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                             Text(text = section.title, color = if(index == tabIndex) MusicRed else Color.Unspecified)
                         }
                     }

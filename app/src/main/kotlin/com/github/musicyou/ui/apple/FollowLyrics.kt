@@ -1,7 +1,13 @@
 package com.github.musicyou.ui.apple
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -23,6 +30,7 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Text as MaterialText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -33,13 +41,18 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.Stable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -51,12 +64,15 @@ import com.github.musicyou.ui.components.TextFieldDialog
 import com.github.musicyou.ui.glass.AdaptiveIcon as Icon
 import com.github.musicyou.ui.glass.AdaptiveText as Text
 import com.github.musicyou.ui.glass.GlassIconButton
+import com.github.musicyou.ui.glass.glassClickable
 import com.github.musicyou.ui.glass.GlassSurface
+import com.github.musicyou.ui.glass.LocalContrastPalette
 import com.github.musicyou.utils.LyricsFetchResult
 import com.github.musicyou.utils.fetchAndSaveLyrics
 import com.github.musicyou.utils.parseLrc
 import com.github.musicyou.utils.mutableStatePreferenceOf
 import com.github.musicyou.utils.preferences
+import com.github.musicyou.utils.LrcTimeline
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.CancellationException
@@ -81,11 +97,8 @@ fun FollowLyrics(media: MediaItem, modifier: Modifier = Modifier) {
     var outcome by remember(media.mediaId) { mutableStateOf<LyricsFetchResult?>(null) }
     var showDelay by remember(media.mediaId) { mutableStateOf(false) }
     var editing by remember(media.mediaId) { mutableStateOf(false) }
-    val list = rememberLazyListState()
-    var viewportHeight by remember { mutableIntStateOf(0) }
-    var lineIndex by remember(media.mediaId) { mutableIntStateOf(-1) }
-
-    LaunchedEffect(media.mediaId) { list.scrollToItem(0) }
+    val lyricsStyle = rememberPlayerDisplaySettings().value.lyricsStyle
+    val follow = remember(media.mediaId) { LyricsFollowState() }
 
     DisposableEffect(view) {
         val previous = view.keepScreenOn
@@ -115,14 +128,6 @@ fun FollowLyrics(media: MediaItem, modifier: Modifier = Modifier) {
         }
     }
     val activeIndex = timeline.currentIndex(position, delayMs.toLong())
-    LaunchedEffect(activeIndex, timeline, viewportHeight) {
-        lineIndex = activeIndex
-        if (activeIndex >= 0 && viewportHeight > 0) {
-            val item = list.layoutInfo.visibleItemsInfo.firstOrNull { it.index == activeIndex }
-            val offset = -viewportHeight / 3 + (item?.size ?: 70) / 2
-            list.animateScrollToItem(activeIndex, offset)
-        }
-    }
 
     if (editing) {
         TextFieldDialog(
@@ -151,6 +156,7 @@ fun FollowLyrics(media: MediaItem, modifier: Modifier = Modifier) {
                 Text("Lyrics", fontSize = 25.sp, fontWeight = FontWeight.Bold)
                 Text(
                     when {
+                        timeline.lines.isNotEmpty() && follow.browsing -> "Browsing lyrics · Tap a line to seek"
                         timeline.lines.isNotEmpty() -> "Following playback · Tap a line to seek"
                         !stored?.fixed.isNullOrBlank() -> "Timing isn't available for these lyrics"
                         fetching -> "Finding lyrics…"
@@ -162,36 +168,28 @@ fun FollowLyrics(media: MediaItem, modifier: Modifier = Modifier) {
                     color = MusicSecondary,
                 )
             }
+            if (follow.browsing) {
+                androidx.compose.material3.TextButton(onClick = follow::resume) {
+                    Text("Follow", color = MusicRed, fontSize = 12.sp)
+                }
+            }
             if (fetching && stored == null) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
             else GlassIconButton(onClick = { retry++ }, modifier = Modifier.size(38.dp)) { Icon(Icons.Rounded.Refresh, "Fetch lyrics again", Modifier.size(18.dp)) }
             GlassIconButton(onClick = { editing = true }, modifier = Modifier.padding(start = 6.dp).size(38.dp)) { Icon(Icons.Rounded.Edit, "Edit lyrics", Modifier.size(18.dp)) }
         }
 
         if (timeline.lines.isNotEmpty()) {
-            LazyColumn(
-                state = list,
-                userScrollEnabled = false,
-                contentPadding = PaddingValues(top = 20.dp, bottom = 200.dp),
-                modifier = Modifier.weight(1f).fillMaxWidth().onSizeChanged { viewportHeight = it.height },
-                verticalArrangement = Arrangement.spacedBy(13.dp),
-            ) {
-                itemsIndexed(timeline.lines, key = { index, line -> "${line.timeMs}_$index" }) { index, line ->
-                    val active = index == lineIndex
-                    val scale by animateFloatAsState(if (active) 1f else 0.94f, label = "lyric emphasis")
-                    Text(
-                        text = line.text.ifBlank { "♪" },
-                        fontSize = if (active) 30.sp else 27.sp,
-                        fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
-                        lineHeight = 37.sp,
-                        color = if (active) Color.Unspecified else MusicSecondary,
-                        modifier = Modifier.fillMaxWidth().graphicsLayer { scaleX = scale; scaleY = scale; transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0.5f) }
-                            .clickable { player.seekTo(timeline.seekPosition(index, delayMs.toLong())) }.padding(vertical = 4.dp),
-                    )
-                }
-            }
+            TimedLyricsList(
+                timeline = timeline,
+                activeIndex = activeIndex,
+                style = lyricsStyle,
+                follow = follow,
+                onSeek = { index -> player.seekTo(timeline.seekPosition(index, delayMs.toLong())) },
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+            )
             GlassSurface(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 8.dp)) {
-                    Row(Modifier.fillMaxWidth().clickable { showDelay = !showDelay }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().glassClickable { showDelay = !showDelay }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Rounded.Schedule, "Lyrics timing", Modifier.size(17.dp))
                         Text("  Lyrics delay", Modifier.weight(1f), fontSize = 13.sp)
                         Text(formatLyricsDelay(delayMs), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
@@ -202,7 +200,7 @@ fun FollowLyrics(media: MediaItem, modifier: Modifier = Modifier) {
                             Text("Positive delay shows words later", fontSize = 10.sp)
                             GlassIconButton(onClick = { delayMs = (delayMs + 250).coerceAtMost(10_000) }, modifier = Modifier.size(34.dp)) { Icon(Icons.Rounded.Add, "Show lyrics 0.25 seconds later", Modifier.size(17.dp)) }
                         }
-                        Text("Reset", modifier = Modifier.align(Alignment.CenterHorizontally).clickable { delayMs = 0 }.padding(7.dp), fontSize = 12.sp, color = MusicRed)
+                        Text("Reset", modifier = Modifier.align(Alignment.CenterHorizontally).glassClickable { delayMs = 0 }.padding(7.dp), fontSize = 12.sp, color = MusicRed)
                     }
                 }
             }
@@ -214,6 +212,109 @@ fun FollowLyrics(media: MediaItem, modifier: Modifier = Modifier) {
                 if (fetching) CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 2.dp)
                 else Text(if (outcome?.instrumental == true) "♪" else "Try again when you're connected.", fontSize = if (outcome?.instrumental == true) 56.sp else 15.sp, color = MusicSecondary)
             }
+        }
+    }
+}
+
+@Stable
+internal class LyricsFollowState {
+    var browsing by mutableStateOf(false)
+        private set
+
+    fun browse() { browsing = true }
+    fun resume() { browsing = false }
+}
+
+/** Timed cues retain their own layout while the emphasis moves between lines. */
+@Composable
+internal fun TimedLyricsList(
+    timeline: LrcTimeline,
+    activeIndex: Int,
+    style: LyricsStyle,
+    follow: LyricsFollowState,
+    onSeek: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+    list: LazyListState = rememberLazyListState(),
+) {
+    val density = LocalDensity.current
+    val palette = LocalContrastPalette.current
+    val dragging by list.interactionSource.collectIsDraggedAsState()
+    var viewportHeight by remember { mutableIntStateOf(0) }
+    val smooth = style == LyricsStyle.ANIMATED_SMOOTH
+    val viewportDp = with(density) { viewportHeight.toDp() }
+
+    LaunchedEffect(timeline) {
+        follow.resume()
+        list.scrollToItem(0)
+    }
+    LaunchedEffect(dragging, timeline) {
+        if (dragging) follow.browse()
+        else if (follow.browsing) {
+            delay(6_000)
+            follow.resume()
+        }
+    }
+    LaunchedEffect(activeIndex, timeline, viewportHeight, style, follow.browsing) {
+        if (activeIndex !in timeline.lines.indices || viewportHeight <= 0 || follow.browsing) return@LaunchedEffect
+        val item = list.layoutInfo.visibleItemsInfo.firstOrNull { it.index == activeIndex }
+        if (smooth && item != null) {
+            val distance = item.offset + item.size / 2f - viewportHeight / 3f
+            if (distance.absoluteValue > 1f) {
+                list.animateScrollBy(distance, tween(650, easing = FastOutSlowInEasing))
+            }
+        } else {
+            val offset = -viewportHeight / 3 + (item?.size ?: with(density) { 45.dp.roundToPx() }) / 2
+            list.animateScrollToItem(activeIndex, offset)
+        }
+    }
+
+    LazyColumn(
+        state = list,
+        contentPadding = if (smooth) PaddingValues(
+            top = maxOf(20.dp, viewportDp / 3 - 20.dp),
+            bottom = maxOf(200.dp, viewportDp * 2 / 3),
+        ) else PaddingValues(top = 20.dp, bottom = 200.dp),
+        modifier = modifier.testTag("timed-lyrics").onSizeChanged { viewportHeight = it.height },
+        verticalArrangement = Arrangement.spacedBy(13.dp),
+    ) {
+        itemsIndexed(timeline.lines, key = { index, line -> "${line.timeMs}_$index" }) { index, line ->
+            val active = index == activeIndex
+            val scale = animateFloatAsState(
+                targetValue = if (active) 1f else if (smooth) 0.91f else 0.94f,
+                animationSpec = spring(dampingRatio = 0.88f, stiffness = if (smooth) 155f else 400f),
+                label = "lyric emphasis",
+            )
+            val lift = animateFloatAsState(
+                targetValue = if (smooth && !active) with(density) { 3.dp.toPx() } else 0f,
+                animationSpec = spring(dampingRatio = 1f, stiffness = 155f),
+                label = "lyric lift",
+            )
+            val color by animateColorAsState(
+                targetValue = if (active) palette.primary else palette.secondary,
+                animationSpec = tween(if (smooth) 400 else 120),
+                label = "lyric color",
+            )
+            MaterialText(
+                text = line.text.ifBlank { "♪" },
+                fontSize = if (smooth || active) 30.sp else 27.sp,
+                fontWeight = if (smooth) FontWeight.Bold else if (active) FontWeight.Bold else FontWeight.Medium,
+                lineHeight = 37.sp,
+                color = color,
+                modifier = Modifier.fillMaxWidth()
+                    .testTag("lyric-line-$index")
+                    .semantics { selected = active }
+                    .graphicsLayer {
+                        scaleX = scale.value
+                        scaleY = scale.value
+                        translationY = lift.value
+                        transformOrigin = TransformOrigin(0f, 0.5f)
+                    }
+                    .clickable {
+                        follow.resume()
+                        onSeek(index)
+                    }
+                    .padding(vertical = 4.dp),
+            )
         }
     }
 }

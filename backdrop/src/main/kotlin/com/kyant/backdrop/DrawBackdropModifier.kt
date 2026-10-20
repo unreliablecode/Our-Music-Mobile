@@ -285,7 +285,7 @@ private class DrawBackdropNode(
         }
     }
 
-    private val drawBackdropLayer: DrawScope.() -> Unit = {
+    private val recordBackdropLayer: DrawScope.() -> Unit = {
         val layer = graphicsLayer
         if (layer != null) {
             val padding = padding
@@ -302,8 +302,11 @@ private class DrawBackdropNode(
             layer.topLeft =
                 if (padding != 0f) IntOffset(-padding.toInt(), -padding.toInt())
                 else IntOffset.Zero
-            drawLayer(layer)
         }
+    }
+
+    private val drawBackdropLayer: DrawScope.() -> Unit = {
+        graphicsLayer?.let { drawLayer(it) }
     }
 
     override fun MeasureScope.measure(
@@ -321,6 +324,7 @@ private class DrawBackdropNode(
             updateEffects()
         }
 
+        recordBackdropLayer()
         onDrawBehind?.invoke(this)
         drawBackdropLayer()
         onDrawSurface?.invoke(this)

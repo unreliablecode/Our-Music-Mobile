@@ -8,36 +8,50 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.musicyou.audio.visualization.AudioFrameAnalyzer
 import com.github.musicyou.audio.visualization.AudioVisualizationFrame
 import com.github.musicyou.ui.glass.GlassBackdropRoot
 import org.junit.Assert.assertTrue
+import org.junit.After
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.sin
+import java.util.UUID
 
 /** Real PCM is analyzed, then the hardware-rendered trace is checked. */
 @RunWith(AndroidJUnit4::class)
 class AudioVisualizationRenderingTest {
     @get:Rule
     val compose = createAndroidComposeRule<ComponentActivity>()
+    private val scopeContext by lazy {
+        ScopeTestContext(compose.activity, "scope_render_test_${UUID.randomUUID()}")
+    }
+
+    @After
+    fun deleteScopePreferences() {
+        scopeContext.deleteTestPreferences()
+    }
 
     @Test
     fun spectrumFollowsDecodedToneFrequencyAndHasNoInventedMotion() {
@@ -156,19 +170,84 @@ class AudioVisualizationRenderingTest {
         compose.onNodeWithText("20 kHz").assertExists()
     }
 
+    @Test
+    fun oscilloscopeHasMeasuredTimebaseSignedTraceAndNoIndependentMotion() {
+        val analyzer = AudioFrameAnalyzer(48_000, 1)
+        val frame = mutableStateOf(AudioVisualizationFrame(sampleRate = 48_000))
+        val playing = mutableStateOf(true)
+        compose.mainClock.autoAdvance = false
+        scene(frame, mutableStateOf(VisualizationMode.OSCILLOSCOPE), playing, Modifier.height(180.dp))
+        settle()
+        val empty = plot()
+        assertStatus("Waiting for audio")
+        compose.onNodeWithText("1 ms/div").assertExists()
+        compose.onNodeWithText("0.25 FS/div").assertExists()
+
+        compose.runOnIdle { frame.value = analyzer.analyze(tone(48_000, 1_000.0), sequence = 1L) }
+        settle()
+        val trace = plot()
+        assertStatus("Triggered")
+        assertTrue("The actual positive half of the tone reaches above the zero axis", changedPixels(empty, trace, 0.1f, 0.9f, 0.06f, 0.4f) > 50)
+        assertTrue("The actual negative half of the tone reaches below the zero axis", changedPixels(empty, trace, 0.1f, 0.9f, 0.6f, 0.94f) > 50)
+        compose.mainClock.advanceTimeBy(2_000)
+        compose.waitForIdle()
+        assertTrue("Unchanged measured PCM cannot invent scope movement", meanDifference(trace, plot()) < 0.001f)
+
+        compose.runOnIdle { playing.value = false }
+        settle()
+        assertStatus("Paused")
+        assertTrue("Pause clears the live trace rather than retaining stale audio", meanDifference(empty, plot()) < 0.001f)
+    }
+
+    @Test
+    fun heldOscilloscopeKeepsItsActualSampleRateAndTimebaseWhenPlaybackClears() {
+        val preferences = scopeContext.getSharedPreferences("oscilloscope", android.content.Context.MODE_PRIVATE)
+        val hadTimebase = preferences.contains("timebase_us")
+        val originalTimebase = preferences.getInt("timebase_us", 1_000)
+        preferences.edit().putInt("timebase_us", 5_000).commit()
+        try {
+            val frame = mutableStateOf(AudioFrameAnalyzer(96_000, 1).analyze(tone(96_000, 1_000.0)))
+            val playing = mutableStateOf(true)
+            compose.mainClock.autoAdvance = false
+            scene(frame, mutableStateOf(VisualizationMode.OSCILLOSCOPE), playing, Modifier.height(180.dp))
+            settle()
+            compose.onNodeWithText("2 ms/div").assertExists()
+            compose.onNodeWithContentDescription("Hold oscilloscope").performClick()
+            settle()
+            assertStatus("Hold")
+            val held = plot()
+            compose.runOnIdle {
+                playing.value = false
+                frame.value = AudioVisualizationFrame()
+            }
+            settle()
+            assertStatus("Hold")
+            compose.onNodeWithText("2 ms/div").assertExists()
+            compose.onNodeWithText("5 ms/div").assertDoesNotExist()
+            assertTrue("Holding retains the same native samples after playback clears its live frame", meanDifference(held, plot()) < 0.001f)
+        } finally {
+            val editor = preferences.edit()
+            if (hadTimebase) editor.putInt("timebase_us", originalTimebase) else editor.remove("timebase_us")
+            editor.commit()
+        }
+    }
+
     private fun scene(
         frame: androidx.compose.runtime.State<AudioVisualizationFrame>,
         mode: androidx.compose.runtime.State<VisualizationMode>,
         playing: androidx.compose.runtime.State<Boolean>,
         panelModifier: Modifier = Modifier,
     ) {
+        val testContext = scopeContext
         compose.setContent {
-            MaterialTheme {
-                GlassBackdropRoot(
-                    modifier = Modifier.fillMaxSize(),
-                    background = { Box(Modifier.fillMaxSize().background(Color.White)) },
-                ) {
-                    AudioVisualization(frame.value, mode.value, playing.value, Modifier.align(Alignment.Center).width(320.dp).then(panelModifier))
+            CompositionLocalProvider(LocalContext provides testContext) {
+                MaterialTheme {
+                    GlassBackdropRoot(
+                        modifier = Modifier.fillMaxSize(),
+                        background = { Box(Modifier.fillMaxSize().background(Color.White)) },
+                    ) {
+                        AudioVisualization(frame.value, mode.value, playing.value, Modifier.align(Alignment.Center).width(320.dp).then(panelModifier))
+                    }
                 }
             }
         }

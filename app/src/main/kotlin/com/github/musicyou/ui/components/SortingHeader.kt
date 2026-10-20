@@ -2,7 +2,7 @@ package com.github.musicyou.ui.components
 
 import androidx.annotation.PluralsRes
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.clickable
+import com.github.musicyou.ui.glass.glassClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -87,7 +87,7 @@ fun <T : SortBy> SortingHeader(
                             sortByEntries.forEachIndexed { index, entry ->
                                 val checked = sortBy == entry
                                 Row(
-                                    modifier = Modifier.fillMaxWidth().semantics { selected = checked }.clickable(role = Role.RadioButton) {
+                                    modifier = Modifier.fillMaxWidth().semantics { selected = checked }.glassClickable(role = Role.RadioButton) {
                                         isSorting = false
                                         changeSortBy(entry)
                                     }.padding(horizontal = 17.dp, vertical = 14.dp),

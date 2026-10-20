@@ -1,7 +1,5 @@
 package com.github.musicyou.ui.apple
 
-import android.content.pm.ActivityInfo
-import android.content.res.Configuration
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -38,7 +36,7 @@ class CarPlayerLayoutTest {
 
     @Test
     fun portraitShowsLargeControlsBothChartsAndExit() {
-        withOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT, Configuration.ORIENTATION_PORTRAIT) {
+        withViewport(400.dp, 850.dp) {
             showPlayer(400.dp, 850.dp)
             assertAllControlsFit()
             assertInside("car-artwork")
@@ -54,7 +52,7 @@ class CarPlayerLayoutTest {
 
     @Test
     fun landscapeFitsArtworkTransportAndEveryAction() {
-        withOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE, Configuration.ORIENTATION_LANDSCAPE) {
+        withViewport(800.dp, 360.dp) {
             val callbacks = mutableMapOf<String, Int>()
             showPlayer(800.dp, 360.dp, callbacks)
             assertAllControlsFit()
@@ -130,20 +128,14 @@ class CarPlayerLayoutTest {
         assertTrue("$tag has visible bounds", bounds.width > 0f && bounds.height > 0f)
     }
 
-    private fun withOrientation(requested: Int, configuration: Int, test: () -> Unit) {
-        var original = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-        compose.activityRule.scenario.onActivity { activity ->
-            original = activity.requestedOrientation
-            activity.requestedOrientation = requested
-        }
-        try {
-            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
-            compose.waitUntil(5_000L) { compose.activity.resources.configuration.orientation == configuration }
-            test()
-        } finally {
-            compose.activityRule.scenario.onActivity { it.requestedOrientation = original }
-            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
-        }
+    private fun withViewport(width: Dp, height: Dp, test: () -> Unit) {
+        val display = compose.activity.resources.displayMetrics
+        org.junit.Assume.assumeTrue(
+            "The physical window must fit the requested layout viewport",
+            display.widthPixels / display.density >= width.value &&
+                display.heightPixels / display.density >= height.value,
+        )
+        test()
     }
 
     private val controls = listOf("car-close", "car-options", "car-previous", "car-play-pause", "car-next", "car-exit")

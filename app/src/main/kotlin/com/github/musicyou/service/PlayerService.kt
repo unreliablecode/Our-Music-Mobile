@@ -188,7 +188,6 @@ class PlayerService : InvincibleService(), Player.Listener, PlaybackStatsListene
 
     private val coroutineScope = CoroutineScope(Dispatchers.IO) + Job()
     private val audioVisualization = RealtimeAudioVisualization()
-    private var visualizationJob: Job? = null
 
     private var volumeNormalizationJob: Job? = null
 
@@ -343,7 +342,6 @@ class PlayerService : InvincibleService(), Player.Listener, PlaybackStatsListene
 
     override fun onDestroy() {
         maybeSavePlayerQueue()
-        visualizationJob?.cancel()
         audioVisualization.close()
 
         preferences.unregisterOnSharedPreferenceChangeListener(this)
@@ -750,6 +748,7 @@ class PlayerService : InvincibleService(), Player.Listener, PlaybackStatsListene
         val mediaMetadata = player.mediaMetadata
 
         val builder = NotificationCompat.Builder(applicationContext, NOTIFICATION_CHANNEL_ID)
+            .setColor(0xFFFA2D48.toInt())
             .setContentTitle(mediaMetadata.title)
             .setContentText(mediaMetadata.artist)
             .setSubText(player.playerError?.message)
@@ -989,18 +988,13 @@ class PlayerService : InvincibleService(), Player.Listener, PlaybackStatsListene
         val visualization: StateFlow<AudioVisualizationFrame>
             get() = audioVisualization.visualization
 
-        fun acquireVisualization(): AutoCloseable {
-            val subscription = audioVisualization.acquire()
-            if (visualizationJob?.isActive != true) {
-                visualizationJob = coroutineScope.launch(Dispatchers.Main) {
-                    while (isActive && audioVisualization.hasObservers) {
-                        audioVisualization.setPlaying(player.isPlaying)
-                        audioVisualization.present(player.currentPosition.coerceAtLeast(0L) * 1_000L)
-                        delay(33L)
-                    }
-                }
-            }
-            return subscription
+        fun acquireVisualization(): AutoCloseable = audioVisualization.acquire()
+
+        /** Called on the UI frame clock before drawing the audible decoded frame. */
+        fun presentVisualization(): AudioVisualizationFrame {
+            audioVisualization.setPlaying(player.isPlaying)
+            audioVisualization.present(player.currentPosition.coerceAtLeast(0L) * 1_000L)
+            return audioVisualization.visualization.value
         }
 
         val musicCacheBytes: Long

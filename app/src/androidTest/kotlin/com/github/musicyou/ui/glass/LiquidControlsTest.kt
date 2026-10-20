@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -38,6 +39,7 @@ import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
+import androidx.compose.ui.unit.width
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -159,6 +161,78 @@ class LiquidControlsTest {
             assertEquals("A drag's release invokes its completion exactly once", 1, finishes.intValue)
         }
         assertEquals("Release settles the slider's resting size", resting.height.value, thumbBounds("glass-slider-thumb").height.value, 0.5f)
+    }
+
+    @Test
+    fun sliderThumbTracksTheHeldFingerBeforeRelease() {
+        val value = mutableFloatStateOf(0.2f)
+        val finishes = mutableIntStateOf(0)
+        compose.mainClock.autoAdvance = false
+        scene {
+            GlassSlider(
+                value = value.floatValue,
+                onValueChange = { value.floatValue = it },
+                onValueChangeFinished = { finishes.intValue++ },
+                modifier = Modifier.width(280.dp).testTag("slider"),
+            )
+        }
+        settle()
+        val track = thumbBounds("slider")
+        compose.onNodeWithTag("slider").performTouchInput {
+            down(Offset(width * 0.2f, height / 2f))
+            moveTo(Offset(width * 0.82f, height / 2f), delayMillis = 16)
+        }
+        compose.mainClock.advanceTimeByFrame()
+        compose.waitForIdle()
+        assertEquals(
+            "The thumb reaches the current finger on the next frame without waiting for release",
+            track.left.value + track.width.value * 0.82f,
+            thumbBounds("glass-slider-thumb").centerX(),
+            1f,
+        )
+        compose.onNodeWithTag("slider").performTouchInput {
+            moveTo(Offset(width * 0.38f, height / 2f), delayMillis = 16)
+        }
+        compose.mainClock.advanceTimeByFrame()
+        compose.waitForIdle()
+        assertEquals(
+            "Reversing direction also follows the held finger on the next frame",
+            track.left.value + track.width.value * 0.38f,
+            thumbBounds("glass-slider-thumb").centerX(),
+            1f,
+        )
+        compose.runOnIdle { assertEquals("Live movement does not complete the gesture", 0, finishes.intValue) }
+        compose.onNodeWithTag("slider").performTouchInput { up() }
+        settle()
+        compose.runOnIdle { assertEquals("The gesture completes once after release", 1, finishes.intValue) }
+    }
+
+    @Test
+    fun aShortGlassButtonTapStillShowsItsPressSpring() {
+        val clicks = mutableIntStateOf(0)
+        compose.mainClock.autoAdvance = false
+        scene {
+            GlassButton(
+                onClick = { clicks.intValue++ },
+                modifier = Modifier.width(140.dp).height(48.dp).testTag("button"),
+                pressedScale = 0.92f,
+            ) {}
+        }
+        settle()
+        val resting = thumbBounds("button")
+        compose.onNodeWithTag("button").performTouchInput {
+            down(center)
+            up()
+        }
+        compose.mainClock.advanceTimeBy(48)
+        compose.waitForIdle()
+        assertTrue(
+            "Even a tap shorter than a frame produces a visible press",
+            thumbBounds("button").height.value < resting.height.value - 0.5f,
+        )
+        settle()
+        assertEquals("The press returns smoothly to its resting size", resting.height.value, thumbBounds("button").height.value, 0.5f)
+        compose.runOnIdle { assertEquals("Animation does not duplicate the action", 1, clicks.intValue) }
     }
 
     @Test

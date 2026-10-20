@@ -1,8 +1,7 @@
 package com.github.musicyou.ui.visualization
 
 import android.net.Uri
-import android.os.Handler
-import android.os.Looper
+import android.view.Choreographer
 import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
@@ -27,6 +26,7 @@ import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -60,15 +60,20 @@ class AudioVisualizationPlaybackTest {
         val observed = AtomicReference<PresentedFrame?>(null)
         val resumed = AtomicReference<PresentedFrame?>(null)
         val initialFrames = CountDownLatch(3)
+        val steadyFrames = CountDownLatch(60)
+        val cadenceFrames = ConcurrentLinkedQueue<AudioVisualizationFrame>()
         val resumedFrame = CountDownLatch(1)
         val phase = AtomicInteger(0)
         val futureFrame = AtomicBoolean(false)
         val stopped = AtomicBoolean(false)
-        val handler = Handler(Looper.getMainLooper())
         var lastSequence = 0L
-        val poll = object : Runnable {
-            override fun run() {
+        val poll = object : Choreographer.FrameCallback {
+            private var previousPresentationNanos = Long.MIN_VALUE
+            override fun doFrame(frameTimeNanos: Long) {
                 if (stopped.get()) return
+                Choreographer.getInstance().postFrameCallback(this)
+                if (previousPresentationNanos != Long.MIN_VALUE && frameTimeNanos - previousPresentationNanos < 15_000_000L) return
+                previousPresentationNanos = frameTimeNanos
                 val activePlayer = player ?: return
                 val positionUs = activePlayer.currentPosition.coerceAtLeast(0L) * 1_000L
                 visualization.setPlaying(activePlayer.isPlaying)
@@ -80,12 +85,13 @@ class AudioVisualizationPlaybackTest {
                         lastSequence = frame.sequence
                         observed.set(PresentedFrame(frame, positionUs))
                         initialFrames.countDown()
+                        cadenceFrames.add(frame)
+                        steadyFrames.countDown()
                     } else if (phase.get() == 1 && positionUs >= 2_000_000L && frame.positionUs >= 1_950_000L) {
                         resumed.set(PresentedFrame(frame, positionUs))
                         resumedFrame.countDown()
                     }
                 }
-                handler.postDelayed(this, 33L)
             }
         }
 
@@ -137,7 +143,7 @@ class AudioVisualizationPlaybackTest {
                     prepare()
                     play()
                 }
-                handler.post(poll)
+                Choreographer.getInstance().postFrameCallback(poll)
             }
             assertTrue("The actual audio sink must produce several audible-time frames", initialFrames.await(15L, TimeUnit.SECONDS))
             assertNull("The generated local audio must decode without errors", failure.get())
@@ -146,6 +152,11 @@ class AudioVisualizationPlaybackTest {
             val decoded = requireNotNull(firstDecodedBytes.get()) { "The real sink did not receive decoded PCM" }
             assertArrayEquals("The sink receives the exact PCM bytes from the local WAV", pcm.copyOf(decoded.size), decoded)
             assertFalse("Decoder lead must never be presented as future audible audio", futureFrame.get())
+            assertTrue("Decoded rolling windows must keep supplying smooth real audio frames", steadyFrames.await(4L, TimeUnit.SECONDS))
+            val cadence = cadenceFrames.toList().take(60)
+            val averageHopUs = (cadence.last().positionUs - cadence.first().positionUs) / (cadence.size - 1)
+            assertTrue("Steady audible-time output must average at least fifty measured frames per second, observed hop $averageHopUs us", averageHopUs <= 20_000L)
+            assertTrue("The analyzer retains individual sixteen millisecond decoded hops", cadence.zipWithNext().count { (first, second) -> second.positionUs - first.positionUs in 16_000L..17_000L } >= 40)
 
             instrumentation.runOnMainSync {
                 player!!.pause()
@@ -177,7 +188,7 @@ class AudioVisualizationPlaybackTest {
         } finally {
             stopped.set(true)
             instrumentation.runOnMainSync {
-                handler.removeCallbacks(poll)
+                Choreographer.getInstance().removeFrameCallback(poll)
                 player?.release()
                 player = null
                 subscription?.close()
@@ -196,6 +207,11 @@ class AudioVisualizationPlaybackTest {
         assertTrue("Unrelated bass bands do not acquire invented energy", frame.frequenciesHz.indices.filter { frame.frequenciesHz[it] in 150f..350f }.all { frame.spectrum[it] < 0.3f })
         assertTrue("RMS matches the generated 0.8-amplitude tones", frame.rms in 0.53f..0.60f)
         assertTrue("Peak amplitude remains the decoded PCM amplitude", abs(frame.peak - 0.8f) < 0.002f)
+        assertTrue("Actual stereo PCM reaches the oscilloscope", frame.oscilloscope.channels.size == 2)
+        val scope = frame.oscilloscope
+        val left = scope.channels[0]
+        val crossingValue = left[0] + (left[1] - left[0]) * scope.originSamples.toFloat()
+        assertTrue("The oscilloscope trigger aligns the actual left-channel rising edge without resampling PCM", scope.risingEdgeTriggered && abs(crossingValue) < 0.001f)
         frame.waveformChannels.forEach { channel ->
             assertTrue("Actual positive samples are present", channel.maximum.max() > 0.79f)
             assertTrue("Actual negative samples are present", channel.minimum.min() < -0.79f)

@@ -1,6 +1,5 @@
 package com.github.musicyou.ui.components
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -34,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import com.github.musicyou.models.Section
 import com.github.musicyou.ui.glass.GlassIconButton
 import com.github.musicyou.ui.glass.GlassSurface
+import com.github.musicyou.ui.glass.GlassButton
 import kotlinx.coroutines.launch
 
 @Composable
@@ -106,12 +106,13 @@ private fun AppleDetailTabs(pagerState: PagerState, sections: List<Section>) {
     ) {
         sections.forEachIndexed { index, section ->
             val selected = pagerState.currentPage == index
-            GlassSurface(
+            GlassButton(
+                onClick = { scope.launch { pagerState.animateScrollToPage(index) } },
                 modifier = Modifier
-                    .semantics { this.selected = selected }
-                    .clickable(role = Role.Tab) { scope.launch { pagerState.animateScrollToPage(index) } },
+                    .semantics { this.selected = selected },
                 shape = RoundedCornerShape(50),
                 tint = if (selected) Color(0xFFFA2D48).copy(alpha = 0.15f) else Color.White.copy(alpha = 0.12f),
+                role = Role.Tab,
             ) {
                 Text(
                     section.title,

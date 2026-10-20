@@ -4,10 +4,12 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -26,21 +28,50 @@ internal class LiquidControlMotion(
     private var pressureJob: Job? = null
     private var pulseJob: Job? = null
     private var releaseJob: Job? = null
+    private var directPosition by mutableStateOf<Float?>(null)
+    private var dragVelocity by mutableFloatStateOf(0f)
+    private var lastDragNanos = 0L
 
     var targetFraction by mutableFloatStateOf(initialFraction.coerceIn(0f, 1f))
         private set
-    val fraction get() = position.value.coerceIn(0f, 1f)
+    val fraction get() = (directPosition ?: position.value).coerceIn(0f, 1f)
     val pressProgress get() = pressure.value.coerceIn(0f, 1f)
     val scaleX get() = horizontalScale.value
     val scaleY get() = verticalScale.value
-    val velocity get() = position.velocity
+    val velocity get() = if (directPosition != null) dragVelocity else position.velocity
+
+    /** Pointer positions are already sampled motion; springing each event adds latency. */
+    fun dragTo(fraction: Float) {
+        val target = fraction.coerceIn(0f, 1f)
+        val now = System.nanoTime()
+        if (directPosition == null) {
+            positionJob?.cancel()
+            dragVelocity = 0f
+        } else {
+            val elapsed = (now - lastDragNanos) / 1_000_000_000f
+            if (elapsed in 0.001f..0.2f) {
+                val sampledVelocity = ((target - this.fraction) / elapsed).coerceIn(-12f, 12f)
+                dragVelocity += (sampledVelocity - dragVelocity) * 0.4f
+            }
+        }
+        lastDragNanos = now
+        targetFraction = target
+        directPosition = target
+    }
 
     fun moveTo(fraction: Float) {
         val target = fraction.coerceIn(0f, 1f)
-        if (target == targetFraction) return
+        if (target == targetFraction && directPosition == null) return
         targetFraction = target
         positionJob?.cancel()
-        positionJob = scope.launch {
+        val fingerPosition = directPosition
+        positionJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            if (fingerPosition != null) {
+                position.snapTo(fingerPosition)
+                directPosition = null
+                dragVelocity = 0f
+                lastDragNanos = 0L
+            }
             position.animateTo(target, spring(1f, 1000f, 0.001f))
         }
     }
@@ -61,7 +92,7 @@ internal class LiquidControlMotion(
         releaseJob = scope.launch {
             withFrameNanos { }
             // Keep the lens open until the positional spring catches the finger.
-            snapshotFlow { position.value }.first { abs(it - targetFraction) < 0.025f }
+            snapshotFlow { fraction }.first { abs(it - targetFraction) < 0.025f }
             pressureJob?.cancel()
             pressureJob = scope.launch {
                 launch { pressure.animateTo(0f, spring(1f, 1000f, 0.001f)) }

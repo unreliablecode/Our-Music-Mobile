@@ -98,7 +98,6 @@ fun AppleMusicShell(navController: NavHostController, intentAction: String?, exp
     val expandedBackdrop = rememberCombinedBackdrop(backdrop, playerBackdrop)
     val media = rememberCurrentMedia()
     val display = rememberPlayerDisplaySettings()
-    val ambientFrame = rememberAudioVisualization(display.value.ambient && media != null)
     val visibleReadability = if (display.value.ambient && media != null) {
         remember(readability.palette.primary) { wallpaperReadability(listOf(Color.Black, Color.White), readability.palette.primary) }
     } else readability
@@ -134,7 +133,7 @@ fun AppleMusicShell(navController: NavHostController, intentAction: String?, exp
                     Box(Modifier.fillMaxSize().layerBackdrop(backdrop)) {
                         Box(Modifier.fillMaxSize().layerBackdrop(wallpaperBackdrop)) {
                             AppBackground(background, Modifier.fillMaxSize())
-                            if (display.value.ambient) media?.let { AmbientBackdrop(it, ambientFrame, Modifier.fillMaxSize()) }
+                            if (display.value.ambient) media?.let { LiveAmbientBackdrop(it, Modifier.fillMaxSize()) }
                             if (visibleReadability.overlay.alpha > 0f) Box(Modifier.fillMaxSize().background(visibleReadability.overlay))
                         }
                         Box(Modifier.fillMaxSize().statusBarsPadding()) {
@@ -239,14 +238,14 @@ fun AppleMiniPlayer(media: MediaItem, open: () -> Unit) {
         override fun onEvents(player: Player, events: Player.Events) { playing = player.shouldBePlaying }
     } }
     GlassSurface(Modifier.fillMaxWidth().height(64.dp), shape = RoundedCornerShape(18.dp)) {
-        Row(Modifier.fillMaxSize().clickable(onClick = open).padding(start = 10.dp, end = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxSize().glassClickable(onClick = open).padding(start = 10.dp, end = 7.dp), verticalAlignment = Alignment.CenterVertically) {
             AsyncImage(media.mediaMetadata.artworkUri, null, Modifier.size(44.dp).clip(RoundedCornerShape(7.dp)), contentScale = ContentScale.Crop)
             Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                 Text(media.mediaMetadata.title?.toString().orEmpty(), fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(media.mediaMetadata.artist?.toString().orEmpty(), color = MusicSecondary, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            IconButton(onClick = { if(playing) player.pause() else { if(player.playbackState == Player.STATE_IDLE) player.prepare(); player.play() } }) { Icon(if(playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, if(playing) "Pause" else "Play", Modifier.size(29.dp)) }
-            IconButton(onClick = { player.forceSeekToNext() }) { Icon(Icons.Filled.SkipNext, "Next song", Modifier.size(28.dp)) }
+            GlassIconButton(onClick = { if(playing) player.pause() else { if(player.playbackState == Player.STATE_IDLE) player.prepare(); player.play() } }) { Icon(if(playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, if(playing) "Pause" else "Play", Modifier.size(29.dp)) }
+            GlassIconButton(onClick = { player.forceSeekToNext() }) { Icon(Icons.Filled.SkipNext, "Next song", Modifier.size(28.dp)) }
         }
     }
 }
@@ -272,7 +271,7 @@ private fun AppleFullPlayer(media: MediaItem, close: () -> Unit) {
     var queueIndex by remember { mutableIntStateOf(player.currentMediaItemIndex) }
     var showSleepTimer by remember { mutableStateOf(false) }
     val visualization = display.value.visualization
-    val frame = rememberAudioVisualization(visualization != VisualizationMode.OFF)
+    val frame = rememberAudioVisualization(visualization != VisualizationMode.OFF && page == 0)
     val sleepTimerLeft by (binder.sleepTimerMillisLeft ?: flowOf(null)).collectAsState(null)
     val position by player.positionAndDurationState()
     val audio = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
@@ -317,8 +316,8 @@ private fun AppleFullPlayer(media: MediaItem, close: () -> Unit) {
                             val edge = minOf(maxWidth, maxHeight)
                             AsyncImage(media.mediaMetadata.artworkUri.thumbnail(1200), "Album artwork", Modifier.size(edge).clip(RoundedCornerShape(14.dp)), contentScale = ContentScale.Crop)
                         }
-                        if (visualization != VisualizationMode.OFF) AudioVisualization(frame, visualization, playing && error == null,
-                            Modifier.fillMaxWidth().height(if (visualization == VisualizationMode.BOTH) 180.dp else 150.dp))
+                        if (visualization != VisualizationMode.OFF) AudioVisualization({ frame.value }, visualization, playing && error == null,
+                            Modifier.fillMaxWidth().height(if (visualization == VisualizationMode.BOTH) 180.dp else if (visualization == VisualizationMode.OSCILLOSCOPE) 180.dp else 150.dp))
                     }
                 }
             }
@@ -348,9 +347,9 @@ private fun AppleFullPlayer(media: MediaItem, close: () -> Unit) {
             }
             error?.let { Text(it, Modifier.padding(top = 8.dp), color = MusicRed, fontSize = 12.sp) }
             Row(Modifier.fillMaxWidth().padding(vertical = 14.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { player.forceSeekToPrevious() }, modifier = Modifier.size(60.dp)) { Icon(Icons.Filled.SkipPrevious, "Previous song", Modifier.size(42.dp)) }
-                IconButton(onClick = { if(playing && error == null) player.pause() else { if(error != null || player.playbackState == Player.STATE_IDLE) player.prepare(); player.play() } }, modifier = Modifier.size(72.dp)) { Icon(if(playing && error == null) Icons.Filled.Pause else Icons.Filled.PlayArrow, if(playing) "Pause" else "Play", Modifier.size(58.dp)) }
-                IconButton(onClick = { player.forceSeekToNext() }, modifier = Modifier.size(60.dp)) { Icon(Icons.Filled.SkipNext, "Next song", Modifier.size(42.dp)) }
+                GlassIconButton(onClick = { player.forceSeekToPrevious() }, modifier = Modifier.size(60.dp)) { Icon(Icons.Filled.SkipPrevious, "Previous song", Modifier.size(42.dp)) }
+                GlassIconButton(onClick = { if(playing && error == null) player.pause() else { if(error != null || player.playbackState == Player.STATE_IDLE) player.prepare(); player.play() } }, modifier = Modifier.size(72.dp)) { Icon(if(playing && error == null) Icons.Filled.Pause else Icons.Filled.PlayArrow, if(playing) "Pause" else "Play", Modifier.size(58.dp)) }
+                GlassIconButton(onClick = { player.forceSeekToNext() }, modifier = Modifier.size(60.dp)) { Icon(Icons.Filled.SkipNext, "Next song", Modifier.size(42.dp)) }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.VolumeDown, null, Modifier.size(20.dp), tint = MusicSecondary)

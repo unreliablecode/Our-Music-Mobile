@@ -1,3 +1,17 @@
+# Our Music 1.0.5
+
+Player options adds an oscilloscope with a virtual instrument screen. Its stereo traces preserve native decoded samples against an adjustable time and amplitude grid. Controls include trigger source, slope and level, Auto and Normal acquisition, Hold, an expanded screen and measurement cursors. Sampled peak, RMS and peak to peak readings use the displayed audio. Digital full scale is the default amplitude unit; voltage labels require an explicit user calibration and do not measure the physical output.
+
+The spectrum, waveform and oscilloscope use overlapping audio analysis at 60 updates per second and presentation aligned with display frames. Audio frames stay available across decoder bursts, and changing traces redraw without recomposing the player controls.
+
+Lyrics style can be set to Default or Animated smooth. The smooth style adds gentle emphasis and flowing movement without changing line wrapping. You can browse lyrics freely and return to the current line with Follow.
+
+Slider thumbs and filled tracks now follow the finger immediately during a drag. Glass buttons share a spring press response, including brief taps, and playback controls use the same treatment.
+
+Glass captures reuse their current frame instead of drawing the same content twice. Nested glass, refraction, blur and highlights retain their appearance. The music notification uses the app accent where supported; Android and the device system control its outer surface.
+
+Returning to the app clears stale playback service bindings before visualization subscriptions resume.
+
 # Our Music 1.0.4
 
 Player options includes Ambient mode, an in app Car mode with larger controls, a live frequency spectrum and an actual stereo audio waveform. Visuals follow decoded song audio and stop when playback pauses. Ambient colors come from the current artwork.

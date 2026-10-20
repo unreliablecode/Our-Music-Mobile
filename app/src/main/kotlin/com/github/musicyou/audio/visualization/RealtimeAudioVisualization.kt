@@ -9,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,7 +21,9 @@ class RealtimeAudioVisualization : AutoCloseable {
     private val observers = AtomicInteger(0)
     private val epochCounter = AtomicLong(0L)
     private val sequenceCounter = AtomicLong(0L)
-    private val windows = Channel<PcmWindow>(Channel.CONFLATED)
+    // Decoder buffers arrive in bursts. Retain their individual 60 Hz hops so
+    // audible-time presentation does not inherit the decoder's slower cadence.
+    private val windows = Channel<PcmWindow>(160, BufferOverflow.DROP_OLDEST)
     private val frames = ArrayDeque<AudioVisualizationFrame>()
     private val frameLock = Any()
     private val mutableFrames = MutableStateFlow(AudioVisualizationFrame())
@@ -54,7 +57,7 @@ class RealtimeAudioVisualization : AutoCloseable {
     }
 
     fun acquire(): AutoCloseable {
-        check(!closed)
+        if (closed) return AutoCloseable { }
         if (observers.incrementAndGet() == 1) clear()
         val released = AtomicBoolean(false)
         return AutoCloseable {

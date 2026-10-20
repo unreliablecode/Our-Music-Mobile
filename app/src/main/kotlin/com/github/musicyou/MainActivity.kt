@@ -137,6 +137,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
+        binder = null
         unbindService(serviceConnection)
         super.onStop()
     }

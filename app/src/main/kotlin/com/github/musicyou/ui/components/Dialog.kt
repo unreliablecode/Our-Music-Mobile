@@ -1,6 +1,6 @@
 package com.github.musicyou.ui.components
 
-import androidx.compose.foundation.clickable
+import com.github.musicyou.ui.glass.glassClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -208,7 +208,7 @@ inline fun <T> ValueSelectorDialog(
         values.forEachIndexed { index, value ->
             val checked = selectedValue == value
             Row(
-                modifier = Modifier.fillMaxWidth().semantics { selected = checked }.clickable(role = Role.RadioButton) {
+                modifier = Modifier.fillMaxWidth().semantics { selected = checked }.glassClickable(role = Role.RadioButton) {
                     onDismiss()
                     onValueSelected(value)
                 }.padding(horizontal = 6.dp, vertical = 14.dp),

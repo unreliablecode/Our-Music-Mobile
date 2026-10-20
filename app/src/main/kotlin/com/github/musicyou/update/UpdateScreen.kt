@@ -1,6 +1,5 @@
 package com.github.musicyou.update
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -27,6 +26,7 @@ import com.github.musicyou.LocalPlayerPadding
 import com.github.musicyou.ui.glass.AdaptiveText as Text
 import com.github.musicyou.ui.glass.GlassIconButton
 import com.github.musicyou.ui.glass.GlassSurface
+import com.github.musicyou.ui.glass.GlassButton
 import com.github.musicyou.ui.glass.GlassToggle
 import com.github.musicyou.ui.glass.adaptiveContentColor
 import java.text.DateFormat
@@ -103,7 +103,7 @@ fun UpdateScreen(coordinator: UpdateCoordinator = rememberUpdateCoordinator(), o
 
 @Composable
 private fun UpdateButton(label: String, onClick: () -> Unit) {
-    GlassSurface(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(onClick = onClick), shape = RoundedCornerShape(16.dp)) {
+    GlassButton(onClick, Modifier.fillMaxWidth().heightIn(min = 48.dp), shape = RoundedCornerShape(16.dp)) {
         Box(Modifier.fillMaxWidth().padding(14.dp), contentAlignment = Alignment.Center) {
             Text(label, fontWeight = FontWeight.SemiBold, color = adaptiveContentColor(MaterialTheme.colorScheme.primary))
         }

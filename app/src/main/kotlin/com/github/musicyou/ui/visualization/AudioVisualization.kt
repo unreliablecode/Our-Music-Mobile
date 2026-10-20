@@ -13,14 +13,21 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.structuralEqualityPolicy
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.preferredFrameRate
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -41,7 +48,7 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
-enum class VisualizationMode { SPECTRUM, WAVEFORM, BOTH, OFF }
+enum class VisualizationMode { SPECTRUM, WAVEFORM, BOTH, OSCILLOSCOPE, OFF }
 
 /** Displays the player's decoded samples without synthesizing motion or audio. */
 @Composable
@@ -51,21 +58,45 @@ fun AudioVisualization(
     playing: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    AudioVisualization(frameProvider = { frame }, mode = mode, playing = playing, modifier = modifier)
+}
+
+/** Frame reads stay in drawing; the surrounding player need not recompose at audio cadence. */
+@Composable
+fun AudioVisualization(
+    frameProvider: () -> AudioVisualizationFrame?,
+    mode: VisualizationMode,
+    playing: Boolean,
+    modifier: Modifier = Modifier,
+) {
     if (mode == VisualizationMode.OFF) return
-    val audio = frame?.takeIf { playing && it.ready }
-    val channels = audio?.waveformChannels?.take(2).orEmpty()
+    if (mode == VisualizationMode.OSCILLOSCOPE) {
+        OscilloscopeScreen(frameProvider, playing, modifier)
+        return
+    }
     val spectrum = mode == VisualizationMode.SPECTRUM || mode == VisualizationMode.BOTH
     val waveform = mode == VisualizationMode.WAVEFORM || mode == VisualizationMode.BOTH
-    val hasAudio = spectrum && audio != null && audio.spectrum.isNotEmpty() && audio.frequenciesHz.isNotEmpty() ||
-        waveform && channels.any { it.minimum.isNotEmpty() && it.maximum.isNotEmpty() }
-    val status = if (!playing) "Paused" else if (hasAudio) "Playing" else "Waiting for audio"
+    val presentation by remember(frameProvider, playing, spectrum, waveform) {
+        derivedStateOf(structuralEqualityPolicy()) {
+            val frame = frameProvider()
+            val audio = frame?.takeIf { playing && it.ready }
+            val channels = audio?.waveformChannels.orEmpty()
+            val hasAudio = spectrum && audio != null && audio.spectrum.isNotEmpty() && audio.frequenciesHz.isNotEmpty() ||
+                waveform && channels.any { it.minimum.isNotEmpty() && it.maximum.isNotEmpty() }
+            PlotPresentation(
+                status = if (!playing) "Paused" else if (hasAudio) "Playing" else "Waiting for audio",
+                channelCount = channels.size,
+                upperFrequency = min(20_000f, (frame?.sampleRate?.takeIf { it > 40 } ?: 40_000) / 2f),
+            )
+        }
+    }
     val title = when (mode) {
         VisualizationMode.SPECTRUM -> "Frequency spectrum"
         VisualizationMode.WAVEFORM -> "Waveform"
         VisualizationMode.BOTH -> "Spectrum and waveform"
+        VisualizationMode.OSCILLOSCOPE -> "Oscilloscope"
         VisualizationMode.OFF -> ""
     }
-    val upperFrequency = min(20_000f, (frame?.sampleRate?.takeIf { it > 40 } ?: 40_000) / 2f)
 
     GlassSurface(modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
         BoxWithConstraints(Modifier.fillMaxWidth()) {
@@ -78,21 +109,23 @@ fun AudioVisualization(
             Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     AdaptiveText(title, fontSize = 12.sp, lineHeight = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                    AdaptiveText(status, fontSize = 11.sp, lineHeight = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                    AdaptiveText(presentation.status, fontSize = 11.sp, lineHeight = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                 }
                 Spacer(Modifier.height(8.dp))
                 if (waveform) {
                     VisualizationPlot(
-                        frame = audio, channels = channels, spectrum = false, upperFrequency = upperFrequency,
-                        plotHeight = plotHeight, accent = accent, ink = ink, status = status,
+                        frameProvider = frameProvider, playing = playing, channelCount = presentation.channelCount,
+                        spectrum = false, upperFrequency = presentation.upperFrequency,
+                        plotHeight = plotHeight, accent = accent, ink = ink, status = presentation.status,
                         tag = if (mode == VisualizationMode.BOTH) "audio-waveform-plot" else "audio-visualization-plot",
                     )
                 }
                 if (waveform && spectrum) Spacer(Modifier.height(8.dp))
                 if (spectrum) {
                     VisualizationPlot(
-                        frame = audio, channels = channels, spectrum = true, upperFrequency = upperFrequency,
-                        plotHeight = plotHeight, accent = accent, ink = ink, status = status,
+                        frameProvider = frameProvider, playing = playing, channelCount = presentation.channelCount,
+                        spectrum = true, upperFrequency = presentation.upperFrequency,
+                        plotHeight = plotHeight, accent = accent, ink = ink, status = presentation.status,
                         tag = if (mode == VisualizationMode.BOTH) "audio-spectrum-plot" else "audio-visualization-plot",
                     )
                 }
@@ -102,7 +135,7 @@ fun AudioVisualization(
                 ) {
                     if (spectrum) {
                         repeat(4) { index ->
-                            val frequency = exp(ln(20f) + ln(upperFrequency / 20f) * index / 3f)
+                            val frequency = exp(ln(20f) + ln(presentation.upperFrequency / 20f) * index / 3f)
                             AxisLabel(frequencyLabel(frequency))
                         }
                     } else {
@@ -115,6 +148,8 @@ fun AudioVisualization(
     }
 }
 
+private data class PlotPresentation(val status: String, val channelCount: Int, val upperFrequency: Float)
+
 @Composable
 private fun AxisLabel(label: String) {
     AdaptiveText(label, fontSize = 10.sp, lineHeight = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
@@ -122,8 +157,9 @@ private fun AxisLabel(label: String) {
 
 @Composable
 private fun VisualizationPlot(
-    frame: AudioVisualizationFrame?,
-    channels: List<AudioWaveformChannel>,
+    frameProvider: () -> AudioVisualizationFrame?,
+    playing: Boolean,
+    channelCount: Int,
     spectrum: Boolean,
     upperFrequency: Float,
     plotHeight: Dp,
@@ -132,16 +168,17 @@ private fun VisualizationPlot(
     status: String,
     tag: String,
 ) {
+    val waveformPaths = remember { List(2) { Path() } }
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(
             Modifier.width(34.dp).height(plotHeight),
-            verticalArrangement = if (!spectrum && channels.size > 1) Arrangement.SpaceAround else Arrangement.SpaceBetween,
+            verticalArrangement = if (!spectrum && channelCount > 1) Arrangement.SpaceAround else Arrangement.SpaceBetween,
         ) {
             if (spectrum) {
                 AxisLabel("0 dB")
                 if (plotHeight >= 36.dp) AxisLabel("−36")
                 AxisLabel("−72")
-            } else if (channels.size > 1) {
+            } else if (channelCount > 1) {
                 AxisLabel("L ±1")
                 AxisLabel("R ±1")
             } else {
@@ -151,17 +188,18 @@ private fun VisualizationPlot(
             }
         }
         Canvas(
-            Modifier.weight(1f).height(plotHeight).testTag(tag).semantics {
+            Modifier.weight(1f).height(plotHeight).preferredFrameRate(if (playing) 60f else 0f).testTag(tag).semantics {
                 contentDescription = if (spectrum) {
                     "Audio frequency spectrum from 20 hertz to ${upperFrequency.roundToInt()} hertz"
-                } else if (channels.size > 1) {
+                } else if (channelCount > 1) {
                     "Stereo audio waveform, left channel above right channel, signed amplitude"
                 } else "Audio waveform with signed amplitude from minus one to plus one"
                 stateDescription = status
             },
         ) {
+            val frame = frameProvider()?.takeIf { playing && it.ready }
             if (spectrum) drawSpectrum(frame, upperFrequency, accent, ink.copy(alpha = 0.14f))
-            else drawWaveform(channels, accent, ink.copy(alpha = 0.14f))
+            else drawWaveform(frame?.waveformChannels.orEmpty(), waveformPaths, accent, ink.copy(alpha = 0.14f))
         }
     }
 }
@@ -198,7 +236,7 @@ private fun DrawScope.drawSpectrum(frame: AudioVisualizationFrame?, upperFrequen
     }
 }
 
-private fun DrawScope.drawWaveform(channels: List<AudioWaveformChannel>, accent: Color, grid: Color) {
+private fun DrawScope.drawWaveform(channels: List<AudioWaveformChannel>, paths: List<Path>, accent: Color, grid: Color) {
     val laneCount = channels.size.coerceAtLeast(1)
     val laneHeight = size.height / laneCount
     repeat(laneCount) { channelIndex ->
@@ -210,20 +248,18 @@ private fun DrawScope.drawWaveform(channels: List<AudioWaveformChannel>, accent:
         if (count == 0) return@repeat
         val amplitudeHeight = (laneHeight / 2f - 2.dp.toPx()).coerceAtLeast(1f)
         val stroke = (size.width / count).coerceAtLeast(1.dp.toPx())
+        val path = paths[channelIndex]
+        path.reset()
         for (index in 0 until count) {
             val minimum = channel.minimum[index]
             val maximum = channel.maximum[index]
             if (!minimum.isFinite() || !maximum.isFinite()) continue
             if (abs(minimum) < 0.0001f && abs(maximum) < 0.0001f) continue
             val x = size.width * (index + 0.5f) / count
-            drawLine(
-                accent,
-                Offset(x, baseline - maximum.coerceIn(-1f, 1f) * amplitudeHeight),
-                Offset(x, baseline - minimum.coerceIn(-1f, 1f) * amplitudeHeight),
-                strokeWidth = stroke,
-                cap = StrokeCap.Round,
-            )
+            path.moveTo(x, baseline - maximum.coerceIn(-1f, 1f) * amplitudeHeight)
+            path.lineTo(x + 0.001f, baseline - minimum.coerceIn(-1f, 1f) * amplitudeHeight)
         }
+        drawPath(path, accent, style = Stroke(stroke, cap = StrokeCap.Round))
     }
 }
 

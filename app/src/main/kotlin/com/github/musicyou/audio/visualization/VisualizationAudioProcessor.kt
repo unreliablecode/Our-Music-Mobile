@@ -39,6 +39,7 @@ class VisualizationAudioProcessor(private val visualization: RealtimeAudioVisual
         if (bytes == 0) return
         val channelCount = inputAudioFormat.channelCount
         val sampleRate = inputAudioFormat.sampleRate
+        val hopSize = (sampleRate / AudioFrameAnalyzer.VISUALIZATION_RATE).coerceAtLeast(1)
         val bufferFrames = bytes / inputAudioFormat.bytesPerFrame
         if (visualization.capturing) {
             val epoch = visualization.epoch
@@ -55,7 +56,7 @@ class VisualizationAudioProcessor(private val visualization: RealtimeAudioVisual
                 writeFrame = (writeFrame + 1) % AudioFrameAnalyzer.WINDOW_SIZE
                 availableFrames = (availableFrames + 1).coerceAtMost(AudioFrameAnalyzer.WINDOW_SIZE)
                 framesSinceWindow++
-                if (availableFrames == AudioFrameAnalyzer.WINDOW_SIZE && framesSinceWindow >= AudioFrameAnalyzer.HOP_SIZE) {
+                if (availableFrames == AudioFrameAnalyzer.WINDOW_SIZE && framesSinceWindow >= hopSize) {
                     framesSinceWindow = 0
                     val ordered = FloatArray(ring.size)
                     val after = ring.size - writeFrame * channelCount

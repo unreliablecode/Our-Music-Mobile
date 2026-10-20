@@ -1,6 +1,5 @@
 package com.github.musicyou.ui.components
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.github.musicyou.ui.styling.Dimensions
+import com.github.musicyou.ui.glass.glassClickable
 
 @Composable
 inline fun Menu(
@@ -46,7 +46,7 @@ fun MenuEntry(
             Text(text = text)
         },
         modifier = Modifier
-            .clickable(enabled = enabled, onClick = onClick)
+            .glassClickable(enabled = enabled, pressedScale = 0.98f, onClick = onClick)
             .alpha(if (enabled) 1F else Dimensions.lowOpacity),
         supportingContent = {
             if (secondaryText != null) {

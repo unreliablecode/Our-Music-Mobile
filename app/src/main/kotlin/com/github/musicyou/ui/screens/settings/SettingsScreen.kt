@@ -53,6 +53,7 @@ import com.github.musicyou.R
 import com.github.musicyou.enums.SettingsSection
 import com.github.musicyou.ui.components.ValueSelectorDialog
 import com.github.musicyou.ui.glass.BackgroundEditor
+import com.github.musicyou.ui.glass.glassClickable
 import com.github.musicyou.ui.glass.GlassSurface
 import com.github.musicyou.ui.glass.GlassToggle
 import com.github.musicyou.ui.glass.rememberBackgroundSettings
@@ -178,7 +179,7 @@ internal fun SettingsHeader(title: String, pop: () -> Unit, backLabel: String = 
 @Composable
 private fun SettingsNavigationRow(title: String, icon: ImageVector, subtitle: String? = null, onClick: () -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = if (subtitle == null) 16.dp else 19.dp),
+        modifier = Modifier.fillMaxWidth().glassClickable(onClick = onClick).padding(horizontal = 16.dp, vertical = if (subtitle == null) 16.dp else 19.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
@@ -291,7 +292,7 @@ fun SettingsEntry(
         tint = Color.White.copy(alpha = 0.46f),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().clickable(enabled = isEnabled, onClick = onClick).padding(horizontal = 15.dp, vertical = 14.dp),
+            modifier = Modifier.fillMaxWidth().glassClickable(enabled = isEnabled, onClick = onClick).padding(horizontal = 15.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(icon, contentDescription = null, tint = Color(0xFFFA2D48), modifier = Modifier.size(24.dp))

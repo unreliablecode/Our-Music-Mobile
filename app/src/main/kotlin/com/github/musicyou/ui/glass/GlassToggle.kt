@@ -141,11 +141,11 @@ fun GlassToggle(
                         dragging = true
                         val amount = (position.x - down.x) / travel
                         dragFraction = (dragFraction + if (ltr) amount else -amount).coerceIn(0f, 1f)
-                        motion.moveTo(dragFraction)
+                        motion.dragTo(dragFraction)
                     },
                     onDrag = { _, amount ->
                         dragFraction = (dragFraction + (if (ltr) amount.x else -amount.x) / travel).coerceIn(0f, 1f)
-                        motion.moveTo(dragFraction)
+                        motion.dragTo(dragFraction)
                     },
                     onFinish = { didDrag, _ ->
                         val target = if (didDrag) dragFraction >= 0.5f else !currentChecked

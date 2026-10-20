@@ -25,7 +25,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.compose.runtime.snapshots.Snapshot
+import kotlinx.coroutines.isActive
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -39,30 +41,40 @@ import com.github.musicyou.ui.glass.AdaptiveIcon as Icon
 import com.github.musicyou.ui.visualization.AudioVisualization
 import com.github.musicyou.ui.visualization.VisualizationMode
 import com.github.musicyou.utils.*
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flowOf
 
 @Composable
-internal fun rememberAudioVisualization(active: Boolean): AudioVisualizationFrame? {
+internal fun rememberAudioVisualization(active: Boolean): State<AudioVisualizationFrame?> {
     val binder = LocalPlayerServiceBinder.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    val frames: Flow<AudioVisualizationFrame?> = remember(binder, active) {
-        if (active) binder?.visualization ?: flowOf(null) else flowOf(null)
-    }
-    val frame by frames.collectAsState(initial = null)
-    DisposableEffect(binder, lifecycle, active) {
-        var subscription: AutoCloseable? = null
-        fun update() {
-            if (active && lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
-                if (subscription == null) subscription = binder?.acquireVisualization()
-            } else { subscription?.close(); subscription = null }
+    val frame = remember(binder, active) { mutableStateOf<AudioVisualizationFrame?>(null) }
+    LaunchedEffect(binder, lifecycle, active) {
+        if (!active || binder == null) return@LaunchedEffect
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            val subscription = binder.acquireVisualization()
+            try {
+                var previousFrame = 0L
+                while (isActive) {
+                    withFrameNanos { frameTime ->
+                        if (frameTime - previousFrame >= 15_000_000L) {
+                            previousFrame = frameTime
+                            frame.value = binder.presentVisualization()
+                            Snapshot.sendApplyNotifications()
+                        }
+                    }
+                }
+            } finally {
+                subscription.close()
+                frame.value = null
+            }
         }
-        val observer = LifecycleEventObserver { _, _ -> update() }
-        lifecycle.addObserver(observer)
-        update()
-        onDispose { lifecycle.removeObserver(observer); subscription?.close() }
     }
-    return if (active) frame else null
+    return frame
+}
+
+@Composable
+internal fun LiveAmbientBackdrop(media: MediaItem, modifier: Modifier = Modifier) {
+    val frame = rememberAudioVisualization(true)
+    AmbientBackdrop(media, frame.value, modifier)
 }
 
 @Composable
@@ -98,7 +110,8 @@ internal fun CarPlayer(media: MediaItem, settings: PlayerDisplaySettings, close:
         CarPlayerContent(
             media = media,
             playing = playing,
-            frame = frame,
+            frame = null,
+            frameProvider = { frame.value },
             visualization = settings.value.visualization,
             error = error,
             onClose = close,
@@ -132,6 +145,7 @@ internal fun CarPlayerContent(
     onExit: () -> Unit,
     modifier: Modifier = Modifier,
     error: String? = null,
+    frameProvider: () -> AudioVisualizationFrame? = { frame },
 ) {
     BoxWithConstraints(modifier.fillMaxSize().testTag("car-player-content")) {
         val landscape = maxWidth > maxHeight && maxWidth >= 600.dp
@@ -146,7 +160,7 @@ internal fun CarPlayerContent(
                         CarArtwork(media, Modifier.weight(1f).fillMaxWidth())
                         if (visualization != VisualizationMode.OFF) {
                             Spacer(Modifier.height(8.dp))
-                            AudioVisualization(frame, visualization, playing, Modifier.fillMaxWidth().height(if (visualization == VisualizationMode.BOTH) 125.dp else 90.dp))
+                            AudioVisualization(frameProvider, visualization, playing, Modifier.fillMaxWidth().height(if (visualization == VisualizationMode.OSCILLOSCOPE) 150.dp else if (visualization == VisualizationMode.BOTH) 132.dp else 90.dp))
                         }
                     }
                     BoxWithConstraints(Modifier.weight(0.58f).fillMaxHeight()) {
@@ -166,7 +180,7 @@ internal fun CarPlayerContent(
                     }
                     CarTransport(playing, onPrevious, onPlayPause, onNext, 96.dp, 72.dp)
                     if (visualization != VisualizationMode.OFF) {
-                        AudioVisualization(frame, visualization, playing, Modifier.fillMaxWidth().height(if (visualization == VisualizationMode.BOTH) 125.dp else 100.dp))
+                        AudioVisualization(frameProvider, visualization, playing, Modifier.fillMaxWidth().height(if (visualization == VisualizationMode.OSCILLOSCOPE) 150.dp else if (visualization == VisualizationMode.BOTH) 132.dp else 100.dp))
                     }
                     CarExit(onExit)
                 }
@@ -177,7 +191,7 @@ internal fun CarPlayerContent(
                 CarTransport(playing, onPrevious, onPlayPause, onNext, 112.dp, 84.dp)
                 if (visualization != VisualizationMode.OFF) {
                     Spacer(Modifier.height(12.dp))
-                    AudioVisualization(frame, visualization, playing, Modifier.fillMaxWidth().height(if (visualization == VisualizationMode.BOTH) 145.dp else 115.dp))
+                    AudioVisualization(frameProvider, visualization, playing, Modifier.fillMaxWidth().height(if (visualization == VisualizationMode.OSCILLOSCOPE) 180.dp else if (visualization == VisualizationMode.BOTH) 152.dp else 115.dp))
                 }
                 Spacer(Modifier.height(8.dp))
                 CarExit(onExit)
@@ -189,7 +203,7 @@ internal fun CarPlayerContent(
 @Composable
 private fun CarHeader(onClose: () -> Unit, onOptions: () -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = onClose, modifier = Modifier.size(64.dp).testTag("car-close")) {
+        GlassIconButton(onClick = onClose, modifier = Modifier.size(64.dp).testTag("car-close")) {
             Icon(Icons.Outlined.Close, "Close player", Modifier.size(32.dp))
         }
         Text("Car mode", Modifier.weight(1f).padding(horizontal = 12.dp), fontSize = 22.sp, lineHeight = 26.sp,

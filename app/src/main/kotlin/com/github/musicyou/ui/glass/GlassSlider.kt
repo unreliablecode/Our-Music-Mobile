@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -24,8 +23,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
@@ -43,7 +46,6 @@ import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.setProgress
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.github.musicyou.ui.glass.motion.LiquidControlMotion
@@ -58,7 +60,6 @@ import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.shadow.InnerShadow
 import com.kyant.backdrop.shadow.Shadow
-import kotlin.math.roundToInt
 
 /** A live glass slider with the spring, pressure and lens motion of AndroidLiquidGlass. */
 @Composable
@@ -107,9 +108,9 @@ fun GlassSlider(
     }
     val thumbBackdrop = rememberCombinedBackdrop(ancestor, transformedTrack)
 
-    fun commitFraction(fraction: Float, finish: Boolean) {
+    fun commitFraction(fraction: Float, finish: Boolean, followPointer: Boolean = false) {
         val target = valueRange.start + fraction.coerceIn(0f, 1f) * rangeSize
-        motion.moveTo(fraction)
+        if (followPointer) motion.dragTo(fraction) else motion.moveTo(fraction)
         if (target != currentValue) changeValue(target)
         if (finish) finishChange?.invoke()
     }
@@ -178,9 +179,9 @@ fun GlassSlider(
                         onPress = { motion.press() },
                         onDragStart = { _, position ->
                             dragging = true
-                            commitFraction(fractionAt(position.x), finish = false)
+                            commitFraction(fractionAt(position.x), finish = false, followPointer = true)
                         },
-                        onDrag = { position, _ -> commitFraction(fractionAt(position.x), finish = false) },
+                        onDrag = { position, _ -> commitFraction(fractionAt(position.x), finish = false, followPointer = true) },
                         onFinish = { _, position ->
                             commitFraction(fractionAt(position.x), finish = true)
                             dragging = false
@@ -200,14 +201,21 @@ fun GlassSlider(
                 Modifier.padding(horizontal = 20.dp).layerBackdrop(trackExport),
                 contentAlignment = AbsoluteAlignment.CenterLeft,
             ) {
-                Box(Modifier.width(trackWidth).height(6.dp).clip(RoundedCornerShape(50)).background(resolvedTrack))
                 Box(
                     Modifier
-                        .offset { IntOffset(if (ltr) 0 else (travel * (1f - motion.fraction)).roundToInt(), 0) }
-                        .width(trackWidth * motion.fraction)
+                        .width(trackWidth)
                         .height(6.dp)
                         .clip(RoundedCornerShape(50))
-                        .background(resolvedActive),
+                        .background(resolvedTrack)
+                        .drawBehind {
+                            val filledWidth = size.width * motion.fraction
+                            drawRoundRect(
+                                color = resolvedActive,
+                                topLeft = Offset(if (ltr) 0f else size.width - filledWidth, 0f),
+                                size = Size(filledWidth, size.height),
+                                cornerRadius = CornerRadius(size.height / 2f),
+                            )
+                        },
                 )
             }
             Box(
