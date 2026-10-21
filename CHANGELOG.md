@@ -1,3 +1,9 @@
+# Our Music 1.0.7
+
+Exported lyrics flow into place before each saved cue and become fully highlighted at the cue time. Smooth motion and fading replace the delayed settling animation. Wrapped lines, closely spaced cues and seeking use the same song timeline in the live preview and saved video.
+
+The video editor adds an optional Music progress bar. Its animated playhead, elapsed time and remaining time follow the song in the preview and export. The setting is remembered, and lyrics leave space for the bar when it is enabled.
+
 # Our Music 1.0.6
 
 Export music video turns a complete offline song into a 60 FPS MP4 with its audio, visualization and synchronized lyrics. Landscape 16:9 and portrait 9:16 layouts support 720p and 1080p. Moving Aurora, Midnight and Sunset backgrounds, album artwork and a custom photo are available. A live preview follows the song using the same renderer as export. Export continues in the background with progress and cancellation controls, then saves to Movies/OurMusic for opening or sharing.

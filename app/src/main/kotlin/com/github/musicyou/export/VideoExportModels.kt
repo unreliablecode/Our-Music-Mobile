@@ -25,6 +25,7 @@ data class VideoExportConfig(
     val backgroundDim: Float = .35f,
     val backgroundMotion: Float = .5f,
     val stylePreset: VideoStylePreset = VideoStylePreset.NEON,
+    val showProgressBar: Boolean = false,
 ) {
     val width: Int get() = if (aspectRatio == VideoAspectRatio.LANDSCAPE) longEdge else shortEdge
     val height: Int get() = if (aspectRatio == VideoAspectRatio.LANDSCAPE) shortEdge else longEdge
@@ -48,7 +49,16 @@ data class VideoExportRequest(
     val artworkUri: String? = null,
     val lyrics: List<VideoLyricCue> = emptyList(),
     val config: VideoExportConfig = VideoExportConfig(),
+    val durationUs: Long = 0L,
 )
+
+internal object VideoProgressTimeline {
+    fun positionUs(timeUs: Long, durationUs: Long): Long =
+        if (durationUs > 0L) timeUs.coerceIn(0L, durationUs) else 0L
+
+    fun fraction(timeUs: Long, durationUs: Long): Double =
+        if (durationUs > 0L) positionUs(timeUs, durationUs).toDouble() / durationUs else 0.0
+}
 
 data class VideoExportState(
     val running: Boolean = false,

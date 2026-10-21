@@ -26,6 +26,8 @@ The editor offers moving Aurora, Midnight and Sunset backgrounds, album artwork 
 
 Timed lyrics use the song's saved synchronization and timing adjustment. When timing is unavailable, you can fetch lyrics or make a video with the visualization and song details.
 
+Lyrics move smoothly into place before each cue and receive their full highlight at the saved cue time. You can also enable Music progress bar to show an animated song timeline with elapsed and remaining time. Both follow the same timing in the preview and exported video.
+
 Exports continue in the background with progress and cancellation controls. Finished videos are saved to Movies/OurMusic and can be opened or shared from the app. A complete offline download is required so rendering can read the whole song without interruptions from the music service.
 
 ## Screenshots

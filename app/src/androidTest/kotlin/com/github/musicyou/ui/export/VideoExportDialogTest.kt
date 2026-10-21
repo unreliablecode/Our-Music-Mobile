@@ -6,6 +6,8 @@ import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -80,6 +82,13 @@ class VideoExportDialogTest {
         compose.onNodeWithText("Landscape 16:9").performScrollTo().performClick()
         compose.onNodeWithText("Landscape 16:9").assertIsSelected()
         compose.onNodeWithTag("video-export-start").assertIsNotEnabled().assertIsDisplayed()
+    }
+
+    @Test
+    fun optionalMusicProgressBarStartsOffAndPersistsItsSelection() {
+        show()
+        compose.onNodeWithTag("export-progress-bar").performScrollTo().assertIsOff().performClick().assertIsOn()
+        compose.waitUntil(2_000) { context.getSharedPreferences("video_export", Context.MODE_PRIVATE).getBoolean("progress_bar", false) }
     }
 
     private fun show() {

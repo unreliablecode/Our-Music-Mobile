@@ -48,7 +48,8 @@ internal class VideoFramePainter private constructor(
     private val interior = SphereInteriorGeometry()
     private val filamentPath = Path()
     private val displaySpectrum = DisplaySpectrum()
-    private val cues = request.lyrics.filter { it.text.isNotBlank() }.sortedBy { it.timeMs }
+    private val progressOverlay = VideoProgressOverlay()
+    private val cues = VideoLyricMotion.normalize(request.lyrics)
     private val layouts = HashMap<Int, StaticLayout>()
     private val titleLayout = layout(request.title, 30f * unit, width - (96f * unit).toInt(), Typeface.BOLD)
     private val artistLayout = layout(request.artist, 20f * unit, width - (96f * unit).toInt(), Typeface.NORMAL)
@@ -87,7 +88,8 @@ internal class VideoFramePainter private constructor(
         canvas.save(); canvas.translate((width - titleLayout.width) / 2f, 38f * unit); titleLayout.draw(canvas)
         canvas.translate((titleLayout.width - artistLayout.width) / 2f, titleLayout.height + 8f * unit)
         paint.alpha = 220; artistLayout.draw(canvas); paint.alpha = 255; canvas.restore()
-        drawLyrics(timeUs / 1000L)
+        drawLyrics(timeUs)
+        progressOverlay.draw(canvas, timeUs, request.durationUs, width, height, unit, config.accentPalette.argb, config)
     }
 
     private fun drawBackground(seconds: Float) {
@@ -225,28 +227,41 @@ internal class VideoFramePainter private constructor(
         }
     }
 
-    private fun drawLyrics(timeMs: Long) {
-        val index = VideoTimeline.lyricIndex(cues, timeMs)
-        val lyricWidth = (width * .83f).toInt()
-        val current = if (index >= 0) layouts.getOrPut(index) { layout(cues[index].text, (if (portrait) 37f else 33f) * unit * config.lyricsScale, lyricWidth, Typeface.BOLD) } else null
-        val next = cues.getOrNull(index + 1)
-        val nextLayout = next?.let { layouts.getOrPut(index + 1) { layout(it.text, (if (portrait) 37f else 33f) * unit * config.lyricsScale, lyricWidth, Typeface.BOLD) } }
-        val progress = if (index >= 0) ((timeMs - cues[index].timeMs) / 350f).coerceIn(0f, 1f) else 1f
-        val eased = progress * progress * (3f - 2f * progress)
-        val top = height * if (portrait) .70f else .735f
+    private fun drawLyrics(timeUs: Long) {
+        val motion = VideoLyricMotion.sample(cues, timeUs)
+        val index = motion.currentIndex
+        val bottom = height - (if (config.showProgressBar) 76f else 32f) * unit
+        val gap = 20f * unit
+        fun paragraph(index: Int): StaticLayout? = cues.getOrNull(index)?.let { cue ->
+            layouts.getOrPut(index) { layout(cue.text, (if (portrait) 37f else 33f) * unit * config.lyricsScale, (width * .83f).toInt(), Typeface.BOLD) }
+        }
+        fun anchor(paragraph: StaticLayout) = min(height * if (portrait) .70f else .735f, bottom - paragraph.height).coerceAtLeast(0f)
+        fun draw(paragraph: StaticLayout, top: Float, opacity: Float) {
+            val alpha = paragraph.paint.alpha
+            paragraph.paint.alpha = opacity.toInt().coerceIn(0, 255)
+            canvas.save(); canvas.translate((width - paragraph.width) / 2f, top); paragraph.draw(canvas); canvas.restore()
+            paragraph.paint.alpha = alpha
+        }
+        val current = paragraph(index)
+        val next = paragraph(index + 1)
+        canvas.save(); canvas.clipRect(0f, 0f, width.toFloat(), bottom)
         if (current != null) {
-            current.paint.alpha = (200 + eased * 55).toInt()
-            canvas.save(); canvas.translate((width - current.width) / 2f, top + (1f - eased) * 10f * unit); current.draw(canvas); canvas.restore()
-            current.paint.alpha = 255
-        } else if (cues.isEmpty()) {
-            val caption = noLyricsLayout
-            canvas.save(); canvas.translate((width - caption.width) / 2f, top); caption.draw(canvas); canvas.restore()
-        }
-        if (nextLayout != null && current != null && current.height < height * .13f) {
-            nextLayout.paint.alpha = 130
-            canvas.save(); canvas.translate((width - nextLayout.width) / 2f, top + current.height + 20f * unit); nextLayout.draw(canvas); canvas.restore()
-            nextLayout.paint.alpha = 255
-        }
+            val top = anchor(current)
+            val nextTop = next?.let(::anchor) ?: top
+            // Both rows finish their movement at the cue, including when line wrapping differs.
+            draw(current, top + (nextTop - current.height - gap - top) * motion.advance, 255f - 125f * motion.advance)
+            paragraph(index - 1)?.let { previous ->
+                draw(previous, top - previous.height - gap - 6f * unit * motion.reveal, 130f * (1f - motion.reveal))
+            }
+            if (next != null) {
+                val previewTop = top + current.height + gap
+                val previewAlpha = if (previewTop + next.height <= bottom) 130f * motion.reveal else 0f
+                draw(next, previewTop + (nextTop - previewTop) * motion.advance, previewAlpha + (255f - previewAlpha) * motion.advance)
+            }
+        } else if (next != null) {
+            draw(next, anchor(next) + (next.height + gap) * (1f - motion.advance), 255f * motion.advance)
+        } else if (cues.isEmpty()) draw(noLyricsLayout, anchor(noLyricsLayout), 255f)
+        canvas.restore()
     }
 
     private fun layout(value: String, size: Float, maxWidth: Int, style: Int): StaticLayout {

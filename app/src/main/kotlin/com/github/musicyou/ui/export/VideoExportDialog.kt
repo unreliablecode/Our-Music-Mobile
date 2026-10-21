@@ -127,7 +127,7 @@ fun VideoExportDialog(media: MediaItem, durationMs: Long, onDismiss: () -> Unit)
             settingsScroll.animateScrollTo(settingsScroll.maxValue)
         }
     }
-    val request = remember(media.mediaId, media.mediaMetadata, config, cues, includeLyrics) {
+    val request = remember(media.mediaId, media.mediaMetadata, config, cues, includeLyrics, durationMs) {
         VideoExportRequest(
             mediaId = media.mediaId,
             title = media.mediaMetadata.title?.toString().orEmpty().ifBlank { "Untitled song" },
@@ -135,6 +135,7 @@ fun VideoExportDialog(media: MediaItem, durationMs: Long, onDismiss: () -> Unit)
             artworkUri = media.mediaMetadata.artworkUri?.let { it.thumbnail(1600)?.toString() },
             lyrics = if (includeLyrics) cues else emptyList(),
             config = config,
+            durationUs = durationMs.coerceIn(0L, Long.MAX_VALUE / 1_000L) * 1_000L,
         )
     }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -182,6 +183,15 @@ fun VideoExportDialog(media: MediaItem, durationMs: Long, onDismiss: () -> Unit)
         }
         if (config.background == VideoBackground.CUSTOM) {
             ExportButton("Choose background photo", !state.running) { photo.launch(arrayOf("image/*")) }
+        }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                AdaptiveText("Music progress bar", fontWeight = FontWeight.SemiBold)
+                AdaptiveText("Show an animated song timeline in the saved video.", fontSize = 12.sp)
+            }
+            GlassToggle(config.showProgressBar, { config = config.copy(showProgressBar = it) },
+                modifier = Modifier.testTag("export-progress-bar").semantics { contentDescription = "Music progress bar" },
+                enabled = !state.running)
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f).padding(end = 12.dp)) {
@@ -384,6 +394,7 @@ private fun loadConfig(context: Context): VideoExportConfig {
         glow = saved.getFloat("glow", 0.7f), intensity = saved.getFloat("intensity", 1f),
         visualizerScale = saved.getFloat("visualizer_size", 1f), lyricsScale = saved.getFloat("lyrics_size", 1f),
         backgroundDim = saved.getFloat("background_dim", 0.35f), backgroundMotion = saved.getFloat("background_motion", 0.5f),
+        showProgressBar = saved.getBoolean("progress_bar", false),
     ).normalized()
 }
 
@@ -393,5 +404,6 @@ private fun saveConfig(context: Context, config: VideoExportConfig) {
         .putString("visualization", config.visualization.name).putString("background", config.background.name)
         .putString("photo", config.customBackgroundUri).putString("palette", config.accentPalette.name).putString("style", config.stylePreset.name)
         .putFloat("glow", config.glow).putFloat("intensity", config.intensity).putFloat("visualizer_size", config.visualizerScale)
-        .putFloat("lyrics_size", config.lyricsScale).putFloat("background_dim", config.backgroundDim).putFloat("background_motion", config.backgroundMotion).apply()
+        .putFloat("lyrics_size", config.lyricsScale).putFloat("background_dim", config.backgroundDim).putFloat("background_motion", config.backgroundMotion)
+        .putBoolean("progress_bar", config.showProgressBar).apply()
 }
