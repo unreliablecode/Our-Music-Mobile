@@ -257,7 +257,10 @@ private class DrawBackdropNode(
     private val layoutLayerBlock: GraphicsLayerScope.() -> Unit = {
         clip = true
         shape = shapeProvider.shape
-        compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen
+        // Only the material layer needs an offscreen buffer for its effects.
+        // This layer clips the finished material and children; forcing another
+        // buffer here duplicates full-screen surfaces and nested control layers.
+        compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Auto
     }
 
     private var layoutCoordinates: LayoutCoordinates? by mutableStateOf(null, neverEqualPolicy())

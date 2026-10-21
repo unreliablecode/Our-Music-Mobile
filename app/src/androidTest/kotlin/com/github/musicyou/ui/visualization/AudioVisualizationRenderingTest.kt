@@ -138,6 +138,27 @@ class AudioVisualizationRenderingTest {
     }
 
     @Test
+    fun sphereFollowsDecodedEnergyAndStaysQuietWithoutAudio() {
+        val analyzer = AudioFrameAnalyzer(48_000, 1)
+        val frame = mutableStateOf(analyzer.analyze(FloatArray(AudioFrameAnalyzer.WINDOW_SIZE)))
+        val playing = mutableStateOf(true)
+        compose.mainClock.autoAdvance = false
+        scene(frame, mutableStateOf(VisualizationMode.SPHERE), playing, Modifier.height(220.dp))
+        settle()
+        val quiet = compose.onNodeWithTag("audio-sphere-plot").captureToImage()
+        compose.runOnIdle { frame.value = analyzer.analyze(tone(48_000, 187.5), sequence = 1L) }
+        settle()
+        val active = compose.onNodeWithTag("audio-sphere-plot").captureToImage()
+        assertTrue("Decoded energy changes the circular spectrum", meanDifference(quiet, active) > 0.003f)
+        compose.mainClock.advanceTimeBy(2_000)
+        compose.waitForIdle()
+        assertTrue("An unchanged frame cannot generate motion", meanDifference(active, compose.onNodeWithTag("audio-sphere-plot").captureToImage()) < 0.001f)
+        compose.runOnIdle { playing.value = false }
+        settle()
+        assertTrue("Pause restores the quiet circle", meanDifference(quiet, compose.onNodeWithTag("audio-sphere-plot").captureToImage()) < 0.001f)
+    }
+
+    @Test
     fun frequencyCaptionStopsAtTheActualSampleRateNyquistLimit() {
         val frame = mutableStateOf(AudioFrameAnalyzer(8_000, 1).analyze(tone(8_000, 1_000.0)))
         scene(frame, mutableStateOf(VisualizationMode.SPECTRUM), mutableStateOf(true))

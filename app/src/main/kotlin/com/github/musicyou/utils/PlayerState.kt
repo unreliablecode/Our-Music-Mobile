@@ -24,12 +24,14 @@ inline fun Player.DisposableListener(crossinline listenerProvider: () -> Player.
 }
 
 @Composable
-fun Player.positionAndDurationState(): State<Pair<Long, Long>> {
+fun Player.positionAndDurationState(active: Boolean = true): State<Pair<Long, Long>> {
     val state = remember {
         mutableStateOf(currentPosition to duration)
     }
 
-    LaunchedEffect(this) {
+    LaunchedEffect(this, active) {
+        if (!active) return@LaunchedEffect
+        state.value = currentPosition to duration
         var isSeeking = false
 
         val listener = object : Player.Listener {

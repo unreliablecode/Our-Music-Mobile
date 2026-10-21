@@ -34,10 +34,12 @@ internal data class PlayerDisplayAppearance(
     val spectrum: Boolean = false,
     val waveform: Boolean = false,
     val oscilloscope: Boolean = false,
+    val sphere: Boolean = false,
     val lyricsStyle: LyricsStyle = LyricsStyle.DEFAULT,
 ) {
     val visualization: VisualizationMode get() = when {
         oscilloscope -> VisualizationMode.OSCILLOSCOPE
+        sphere -> VisualizationMode.SPHERE
         spectrum && waveform -> VisualizationMode.BOTH
         spectrum -> VisualizationMode.SPECTRUM
         waveform -> VisualizationMode.WAVEFORM
@@ -54,6 +56,7 @@ internal class PlayerDisplaySettings(context: Context) {
         spectrum = preferences.getBoolean("spectrum", false),
         waveform = preferences.getBoolean("waveform", false),
         oscilloscope = preferences.getBoolean("oscilloscope", false),
+        sphere = preferences.getBoolean("sphere", false),
         lyricsStyle = LyricsStyle.fromPreference(preferences.getString("lyrics_style", null)),
     ))
         private set
@@ -63,6 +66,7 @@ internal class PlayerDisplaySettings(context: Context) {
             .putBoolean("car", appearance.car).putBoolean("spectrum", appearance.spectrum)
             .putBoolean("waveform", appearance.waveform)
             .putBoolean("oscilloscope", appearance.oscilloscope)
+            .putBoolean("sphere", appearance.sphere)
             .putString("lyrics_style", appearance.lyricsStyle.preferenceValue).apply()
         value = appearance
     }
@@ -101,14 +105,18 @@ internal fun PlayerDisplayOptions(settings: PlayerDisplaySettings, onDismiss: ()
             settings.update(appearance.copy(car = it))
         }
         PlayerOption("Equalizer visualization", "Live frequency spectrum", appearance.spectrum) {
-            settings.update(appearance.copy(spectrum = it, oscilloscope = false))
+            settings.update(appearance.copy(spectrum = it, oscilloscope = false, sphere = false))
         }
         PlayerOption("Audio waveform", "The actual sound, shown in real time", appearance.waveform) {
-            settings.update(appearance.copy(waveform = it, oscilloscope = false))
+            settings.update(appearance.copy(waveform = it, oscilloscope = false, sphere = false))
         }
         PlayerOption("Oscilloscope", "A live virtual screen of the decoded audio", appearance.oscilloscope) {
-            settings.update(appearance.copy(oscilloscope = it, spectrum = if (it) false else appearance.spectrum,
+            settings.update(appearance.copy(oscilloscope = it, sphere = false, spectrum = if (it) false else appearance.spectrum,
                 waveform = if (it) false else appearance.waveform))
+        }
+        PlayerOption("Spectrum sphere", "A luminous circular spectrum driven by the music", appearance.sphere) {
+            settings.update(appearance.copy(sphere = it, oscilloscope = false,
+                spectrum = if (it) false else appearance.spectrum, waveform = if (it) false else appearance.waveform))
         }
         Spacer(Modifier.height(14.dp))
         Text("Lyrics style", fontSize = 17.sp, fontWeight = FontWeight.SemiBold)

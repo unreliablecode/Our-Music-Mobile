@@ -24,6 +24,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -48,7 +49,7 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
-enum class VisualizationMode { SPECTRUM, WAVEFORM, BOTH, OSCILLOSCOPE, OFF }
+enum class VisualizationMode { SPECTRUM, WAVEFORM, BOTH, OSCILLOSCOPE, SPHERE, OFF }
 
 /** Displays the player's decoded samples without synthesizing motion or audio. */
 @Composable
@@ -70,6 +71,11 @@ fun AudioVisualization(
     modifier: Modifier = Modifier,
 ) {
     if (mode == VisualizationMode.OFF) return
+    VisualizationFrameRate(active = playing)
+    if (mode == VisualizationMode.SPHERE) {
+        SpectrumSphere(frameProvider, playing, modifier)
+        return
+    }
     if (mode == VisualizationMode.OSCILLOSCOPE) {
         OscilloscopeScreen(frameProvider, playing, modifier)
         return
@@ -95,6 +101,7 @@ fun AudioVisualization(
         VisualizationMode.WAVEFORM -> "Waveform"
         VisualizationMode.BOTH -> "Spectrum and waveform"
         VisualizationMode.OSCILLOSCOPE -> "Oscilloscope"
+        VisualizationMode.SPHERE -> "Spectrum sphere"
         VisualizationMode.OFF -> ""
     }
 
@@ -188,7 +195,7 @@ private fun VisualizationPlot(
             }
         }
         Canvas(
-            Modifier.weight(1f).height(plotHeight).preferredFrameRate(if (playing) 60f else 0f).testTag(tag).semantics {
+            Modifier.weight(1f).height(plotHeight).graphicsLayer().preferredFrameRate(if (playing) 60f else 0f).testTag(tag).semantics {
                 contentDescription = if (spectrum) {
                     "Audio frequency spectrum from 20 hertz to ${upperFrequency.roundToInt()} hertz"
                 } else if (channelCount > 1) {

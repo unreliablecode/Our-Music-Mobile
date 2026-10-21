@@ -48,6 +48,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -83,6 +84,7 @@ fun FollowLyrics(media: MediaItem, modifier: Modifier = Modifier) {
     val player = LocalPlayerServiceBinder.current?.player ?: return
     val context = LocalContext.current.applicationContext
     val view = LocalView.current
+    val focused = LocalWindowInfo.current.isWindowFocused
     val stored by remember(media.mediaId) { database.lyrics(media.mediaId) }.collectAsState(initial = null)
     val timeline = remember(stored?.synced) { parseLrc(stored?.synced) }
     var delayMs by remember(media.mediaId) {
@@ -105,7 +107,8 @@ fun FollowLyrics(media: MediaItem, modifier: Modifier = Modifier) {
         view.keepScreenOn = true
         onDispose { view.keepScreenOn = previous }
     }
-    LaunchedEffect(player, media.mediaId) {
+    LaunchedEffect(player, media.mediaId, focused) {
+        if (!focused) return@LaunchedEffect
         while (isActive) {
             position = player.currentPosition
             delay(100)

@@ -79,7 +79,7 @@ class VisualizationFrameTimingTest {
         val parentCompositions = AtomicInteger()
         val windowDraws = AtomicInteger()
         val providerReads = AtomicInteger()
-        val modes = listOf(VisualizationMode.SPECTRUM, VisualizationMode.WAVEFORM, VisualizationMode.OSCILLOSCOPE)
+        val modes = listOf(VisualizationMode.SPECTRUM, VisualizationMode.WAVEFORM, VisualizationMode.OSCILLOSCOPE, VisualizationMode.SPHERE)
         val mode = mutableStateOf(modes.first())
         val frames = measuredPcmFrames()
         val current = mutableStateOf(frames.first())

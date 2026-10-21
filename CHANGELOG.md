@@ -1,3 +1,13 @@
+# Our Music 1.0.6
+
+Export music video turns a complete offline song into a 60 FPS MP4 with its audio, visualization and synchronized lyrics. Landscape 16:9 and portrait 9:16 layouts support 720p and 1080p. Moving Aurora, Midnight and Sunset backgrounds, album artwork and a custom photo are available. A live preview follows the song using the same renderer as export. Export continues in the background with progress and cancellation controls, then saves to Movies/OurMusic for opening or sharing.
+
+Spectrum sphere adds a luminous audio reactive circular spectrum with animated inner filaments and particles to playback and video export. Video styles also include the frequency spectrum, waveform and digital oscilloscope. Neon, Soft and Prism presets, accent palettes, glow, response intensity, visualization size, lyrics size, background dimming and motion can be adjusted. Lyrics follow saved cue timing and the user's playback adjustment; unavailable timing is reported before export.
+
+Playback progress updates independently of the full player, and audio plots keep their drawing in separate display lists. Glass surfaces reuse unchanged decoration and avoid redundant buffers while preserving the material effects and nested captures.
+
+Video rendering uses a GPU canvas on supported devices to avoid drawing and copying full resolution CPU bitmaps for every frame. Every completed export keeps a fixed 60 FPS timeline, with its frame count and timestamps checked before saving. Slower or throttled rendering takes longer without skipping frames. Audio encoder delay is measured and corrected so the saved audio remains aligned with the visualization and lyrics.
+
 # Our Music 1.0.5
 
 Player options adds an oscilloscope with a virtual instrument screen. Its stereo traces preserve native decoded samples against an adjustable time and amplitude grid. Controls include trigger source, slope and level, Auto and Normal acquisition, Hold, an expanded screen and measurement cursors. Sampled peak, RMS and peak to peak readings use the displayed audio. Digital full scale is the default amplitude unit; voltage labels require an explicit user calibration and do not measure the physical output.

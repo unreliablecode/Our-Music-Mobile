@@ -17,6 +17,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -43,10 +44,10 @@ import com.github.musicyou.ui.visualization.VisualizationMode
 import com.github.musicyou.utils.*
 
 @Composable
-internal fun rememberAudioVisualization(active: Boolean): State<AudioVisualizationFrame?> {
+internal fun rememberAudioVisualization(active: Boolean, retainWhenInactive: Boolean = false): State<AudioVisualizationFrame?> {
     val binder = LocalPlayerServiceBinder.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    val frame = remember(binder, active) { mutableStateOf<AudioVisualizationFrame?>(null) }
+    val frame = remember(binder) { mutableStateOf<AudioVisualizationFrame?>(null) }
     LaunchedEffect(binder, lifecycle, active) {
         if (!active || binder == null) return@LaunchedEffect
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -64,7 +65,7 @@ internal fun rememberAudioVisualization(active: Boolean): State<AudioVisualizati
                 }
             } finally {
                 subscription.close()
-                frame.value = null
+                if (!retainWhenInactive) frame.value = null
             }
         }
     }
@@ -73,7 +74,8 @@ internal fun rememberAudioVisualization(active: Boolean): State<AudioVisualizati
 
 @Composable
 internal fun LiveAmbientBackdrop(media: MediaItem, modifier: Modifier = Modifier) {
-    val frame = rememberAudioVisualization(true)
+    // A dialog owns the live scene while the covered activity retains its last appearance.
+    val frame = rememberAudioVisualization(LocalWindowInfo.current.isWindowFocused, retainWhenInactive = true)
     AmbientBackdrop(media, frame.value, modifier)
 }
 

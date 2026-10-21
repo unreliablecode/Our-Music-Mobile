@@ -27,6 +27,10 @@ if action == "dump":
         if label:
             print(label, a.get("bounds"), a.get("clickable"), a.get("package"))
 elif action in ("tap", "taplast"):
+    foreground = run("shell", "dumpsys", "activity", "activities")
+    resumed = [line for line in foreground.splitlines() if "topResumedActivity=" in line]
+    if not any("net.omusic.unreliablecode/" in line for line in resumed):
+        raise SystemExit("Our Music is no longer in the foreground; no touch was sent.")
     import re
     wanted = sys.argv[3]
     matches = [n for n in nodes if wanted in (n.get("text"), n.get("content-desc"))]

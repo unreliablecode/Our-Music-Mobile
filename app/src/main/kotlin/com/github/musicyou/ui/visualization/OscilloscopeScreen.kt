@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.preferredFrameRate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
@@ -162,6 +163,7 @@ private fun ScopePanel(
     config: OscilloscopeConfig, format: ScopeFormat, running: Boolean, presenting: Boolean, onHold: () -> Unit,
     onExpand: () -> Unit, onControls: () -> Unit, modifier: Modifier, expanded: Boolean = false,
 ) {
+    VisualizationFrameRate(active = presenting)
     val paths = remember { List(2) { Path() } }
     val unit = if (config.calibratedVoltsPerFullScale == null) "FS" else "V"
     val factor = config.calibratedVoltsPerFullScale?.toDouble() ?: 1.0
@@ -197,7 +199,7 @@ private fun ScopePanel(
                         }
                     }
                     Canvas(
-                        Modifier.weight(1f).height(plotHeight).preferredFrameRate(if (presenting) 60f else 0f).testTag("audio-visualization-plot").semantics {
+                        Modifier.weight(1f).height(plotHeight).graphicsLayer().preferredFrameRate(if (presenting) 60f else 0f).testTag("audio-visualization-plot").semantics {
                             contentDescription = "Digital stereo oscilloscope, ten time divisions and eight amplitude divisions, $timebaseLabel, $verticalLabel, $triggerSource $triggerStyle trigger"
                             stateDescription = status.value
                         },

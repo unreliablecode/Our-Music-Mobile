@@ -1,6 +1,7 @@
 package com.kyant.backdrop.highlight
 
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.PaintingStyle
@@ -18,6 +19,7 @@ import androidx.compose.ui.node.requireGraphicsContext
 import androidx.compose.ui.platform.InspectorInfo
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.util.fastCoerceAtMost
 import com.kyant.backdrop.RuntimeShaderCacheImpl
 import com.kyant.backdrop.internal.ShapeProvider
@@ -82,7 +84,12 @@ internal class HighlightNode(
 
     private val runtimeShaderCache = RuntimeShaderCacheImpl()
 
-    private var prevStyle: HighlightStyle? = null
+    private var recordedHighlight: Highlight? = null
+    private var recordedOutline: Outline? = null
+    private var recordedSize = Size.Unspecified
+    private var recordedDensity = Float.NaN
+    private var recordedFontScale = Float.NaN
+    private var recordedLayoutDirection: LayoutDirection? = null
 
     override fun ContentDrawScope.draw() {
         val highlight = highlight()
@@ -112,18 +119,37 @@ internal class HighlightNode(
                     null
                 }
 
-            configurePaint(highlight)
-
             highlightLayer.alpha = highlight.alpha
             highlightLayer.blendMode = highlight.style.blendMode
-            highlightLayer.record(safeSize) {
-                translate(1f, 1f) {
-                    val canvas = drawContext.canvas
-                    canvas.save()
-                    canvas.clipOutline(outline, clipPath)
-                    canvas.drawOutline(outline, paint)
-                    canvas.restore()
+
+            // Keep static decoration display lists intact while the scene below
+            // changes. Re-recording them would invalidate their cached textures
+            // on every audio frame. Generic paths and custom shader styles can
+            // have mutable internals, so those retain their original live draw.
+            val cacheable = outline !is Outline.Generic && when (highlight.style) {
+                is HighlightStyle.Plain, is HighlightStyle.Default, is HighlightStyle.Ambient -> true
+                else -> false
+            }
+            if (!cacheable || recordedHighlight != highlight || recordedOutline != outline || recordedSize != size ||
+                recordedDensity != density.density || recordedFontScale != density.fontScale ||
+                recordedLayoutDirection != layoutDirection
+            ) {
+                configurePaint(highlight)
+                highlightLayer.record(safeSize) {
+                    translate(1f, 1f) {
+                        val canvas = drawContext.canvas
+                        canvas.save()
+                        canvas.clipOutline(outline, clipPath)
+                        canvas.drawOutline(outline, paint)
+                        canvas.restore()
+                    }
                 }
+                recordedHighlight = if (cacheable) highlight else null
+                recordedOutline = if (cacheable) outline else null
+                recordedSize = size
+                recordedDensity = density.density
+                recordedFontScale = density.fontScale
+                recordedLayoutDirection = layoutDirection
             }
 
             translate(-1f, -1f) {
@@ -145,7 +171,12 @@ internal class HighlightNode(
         }
         clipPath = null
         runtimeShaderCache.clear()
-        prevStyle = null
+        recordedHighlight = null
+        recordedOutline = null
+        recordedSize = Size.Unspecified
+        recordedDensity = Float.NaN
+        recordedFontScale = Float.NaN
+        recordedLayoutDirection = null
     }
 
     private fun DrawScope.configurePaint(highlight: Highlight) {

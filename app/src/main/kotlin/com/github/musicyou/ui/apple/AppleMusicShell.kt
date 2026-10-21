@@ -58,6 +58,7 @@ import com.github.musicyou.ui.navigation.Navigation
 import com.github.musicyou.ui.navigation.Routes
 import com.github.musicyou.ui.visualization.AudioVisualization
 import com.github.musicyou.ui.visualization.VisualizationMode
+import com.github.musicyou.ui.export.VideoExportDialog
 import com.github.musicyou.update.rememberUpdateCoordinator
 import com.github.musicyou.utils.*
 import com.kyant.backdrop.backdrops.layerBackdrop
@@ -265,15 +266,16 @@ private fun AppleFullPlayer(media: MediaItem, close: () -> Unit) {
     var repeat by remember { mutableIntStateOf(player.repeatMode) }
     var shuffled by remember { mutableStateOf(player.shuffleModeEnabled) }
     var page by rememberSaveable { mutableIntStateOf(0) }
-    var seek by remember(media.mediaId) { mutableStateOf<Float?>(null) }
     var error by remember { mutableStateOf(playbackErrorMessage(player.playerError)) }
     var queue by remember { mutableStateOf(player.currentTimeline.mediaItems) }
     var queueIndex by remember { mutableIntStateOf(player.currentMediaItemIndex) }
     var showSleepTimer by remember { mutableStateOf(false) }
+    var exportItem by remember { mutableStateOf<MediaItem?>(null) }
+    var exportDurationMs by remember { mutableLongStateOf(0L) }
     val visualization = display.value.visualization
-    val frame = rememberAudioVisualization(visualization != VisualizationMode.OFF && page == 0)
+    val presenting = exportItem == null
+    val frame = rememberAudioVisualization(visualization != VisualizationMode.OFF && page == 0 && presenting, retainWhenInactive = true)
     val sleepTimerLeft by (binder.sleepTimerMillisLeft ?: flowOf(null)).collectAsState(null)
-    val position by player.positionAndDurationState()
     val audio = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
     val maxVolume = remember { audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1) }
     var volume by remember { mutableFloatStateOf(audio.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / maxVolume) }
@@ -293,6 +295,11 @@ private fun AppleFullPlayer(media: MediaItem, close: () -> Unit) {
                     NonQueuedMediaItemMenu(mediaItem = media, onDismiss = menu::hide)
                     MenuEntry(Icons.Outlined.Schedule, "Sleep Timer", onClick = { menu.hide(); showSleepTimer = true })
                     MenuEntry(Icons.Outlined.Tune, "Player options", onClick = { menu.display { PlayerDisplayOptions(display, menu::hide) } })
+                    MenuEntry(Icons.Outlined.Movie, "Export music video", onClick = {
+                        menu.hide()
+                        exportDurationMs = player.duration.coerceAtLeast(0L)
+                        exportItem = media
+                    })
                 } }, modifier = Modifier.size(44.dp)) { Icon(Icons.Outlined.MoreHoriz, "Playback options") }
             }
             Spacer(Modifier.height(18.dp))
@@ -311,13 +318,15 @@ private fun AppleFullPlayer(media: MediaItem, close: () -> Unit) {
                             }
                         }
                     }
-                    else -> Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    else -> if (visualization == VisualizationMode.SPHERE) {
+                        AudioVisualization({ frame.value }, visualization, playing && error == null, Modifier.fillMaxSize())
+                    } else Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                             val edge = minOf(maxWidth, maxHeight)
                             AsyncImage(media.mediaMetadata.artworkUri.thumbnail(1200), "Album artwork", Modifier.size(edge).clip(RoundedCornerShape(14.dp)), contentScale = ContentScale.Crop)
                         }
                         if (visualization != VisualizationMode.OFF) AudioVisualization({ frame.value }, visualization, playing && error == null,
-                            Modifier.fillMaxWidth().height(if (visualization == VisualizationMode.BOTH) 180.dp else if (visualization == VisualizationMode.OSCILLOSCOPE) 180.dp else 150.dp))
+                            Modifier.fillMaxWidth().height(if (visualization == VisualizationMode.BOTH || visualization == VisualizationMode.OSCILLOSCOPE) 180.dp else 150.dp))
                     }
                 }
             }
@@ -331,20 +340,7 @@ private fun AppleFullPlayer(media: MediaItem, close: () -> Unit) {
                     Icon(if(liked == null) Icons.Outlined.StarBorder else Icons.Filled.Star, "Favorite", tint = if(liked == null) MusicInk else MusicRed)
                 }
             }
-            val duration = position.second.takeIf { it > 0 } ?: 1L
-            GlassSlider(
-                value = seek ?: (position.first.toFloat() / duration).coerceIn(0f, 1f),
-                onValueChange = { seek = it },
-                onValueChangeFinished = { seek?.let { player.seekTo((it * duration).toLong()) }; seek = null },
-                onValueChangeCanceled = { seek = null },
-                enabled = position.second > 0,
-                contentDescription = "Playback position",
-                activeTrackColor = adaptiveContentColor(MusicSecondary),
-            )
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(formatTime(position.first), fontSize = 11.sp, color = MusicSecondary)
-                Text("−${formatTime((duration - position.first).coerceAtLeast(0))}", fontSize = 11.sp, color = MusicSecondary)
-            }
+            PlaybackProgress(media.mediaId, player, presenting)
             error?.let { Text(it, Modifier.padding(top = 8.dp), color = MusicRed, fontSize = 12.sp) }
             Row(Modifier.fillMaxWidth().padding(vertical = 14.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                 GlassIconButton(onClick = { player.forceSeekToPrevious() }, modifier = Modifier.size(60.dp)) { Icon(Icons.Filled.SkipPrevious, "Previous song", Modifier.size(42.dp)) }
@@ -371,6 +367,28 @@ private fun AppleFullPlayer(media: MediaItem, close: () -> Unit) {
         }
     }
     if(showSleepTimer) SleepTimer(sleepTimerLeft) { showSleepTimer = false }
+    exportItem?.let { VideoExportDialog(it, exportDurationMs) { exportItem = null } }
+}
+
+/** Playback time changes only recompose this control instead of the live visualization. */
+@Composable
+private fun PlaybackProgress(mediaId: String, player: Player, active: Boolean) {
+    var seek by remember(mediaId) { mutableStateOf<Float?>(null) }
+    val position by player.positionAndDurationState(active)
+    val duration = position.second.takeIf { it > 0 } ?: 1L
+    GlassSlider(
+        value = seek ?: (position.first.toFloat() / duration).coerceIn(0f, 1f),
+        onValueChange = { seek = it },
+        onValueChangeFinished = { seek?.let { player.seekTo((it * duration).toLong()) }; seek = null },
+        onValueChangeCanceled = { seek = null },
+        enabled = position.second > 0,
+        contentDescription = "Playback position",
+        activeTrackColor = adaptiveContentColor(MusicSecondary),
+    )
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(formatTime(position.first), fontSize = 11.sp, color = MusicSecondary)
+        Text("−${formatTime((duration - position.first).coerceAtLeast(0))}", fontSize = 11.sp, color = MusicSecondary)
+    }
 }
 
 private fun formatTime(milliseconds: Long): String {

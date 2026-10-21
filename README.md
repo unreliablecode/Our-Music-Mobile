@@ -10,11 +10,23 @@ Browse music, build playlists, save favorites and manage the playback queue. Dow
 
 Player options offers Ambient mode, with artwork colors that respond to the music, and Car mode, with larger playback controls. The frequency spectrum, stereo waveform and oscilloscope use decoded audio with a 60 FPS presentation target. Visuals pause with the song; the spectrum and waveform can also be shown together.
 
+Spectrum sphere turns the decoded frequency spectrum into a luminous circular shape with moving inner filaments and particles. Its movement follows playback and audio energy. It is available during playback and when making a video.
+
 The oscilloscope has adjustable time and amplitude scales, trigger controls, measurement cursors and Hold. Its grid shows digital full scale by default. Voltage labels require a calibration factor supplied by the user; the app does not measure the physical speaker or headphone output.
 
 Lyrics style can be changed in Player options. Default keeps classic line highlighting, while Animated smooth adds gentle transitions and flowing movement. You can browse the lyrics and return to the current line with Follow.
 
 You can clear streamed music from the cache in Player options. Downloaded songs, your library and background photos stay on the device. Tracks that require service verification remain subject to those restrictions; the player shows the reason when access is unavailable.
+
+## Music videos
+
+Open Export music video from the playback menu to turn a downloaded song into an MP4 with audio, visualization and synchronized lyrics. Choose landscape 16:9 or portrait 9:16 at 720p or 1080p. Every completed video uses a fixed 60 FPS timeline. The exporter renders every frame and checks the saved frame count and timestamps before publishing the file. Thermal throttling can increase the export time without lowering the output frame rate. The exporter uses hardware video encoding and GPU rendering when supported.
+
+The editor offers moving Aurora, Midnight and Sunset backgrounds, album artwork and your own photo. Its live preview uses the same renderer as the saved video and follows the current song. Neon, Soft and Prism presets provide a starting point. You can adjust the accent palette, glow, response intensity, visualization size, lyrics size, background dimming and movement.
+
+Timed lyrics use the song's saved synchronization and timing adjustment. When timing is unavailable, you can fetch lyrics or make a video with the visualization and song details.
+
+Exports continue in the background with progress and cancellation controls. Finished videos are saved to Movies/OurMusic and can be opened or shared from the app. A complete offline download is required so rendering can read the whole song without interruptions from the music service.
 
 ## Screenshots
 
@@ -29,6 +41,10 @@ These screens were captured from the app on a Samsung Galaxy Z Fold6. The backgr
 
 <p>
   <img src="docs/screenshots/scope.png" width="760" alt="Expanded oscilloscope with stereo traces, trigger status and digital audio measurements">
+</p>
+
+<p>
+  <img src="docs/screenshots/videoeditor.png" width="760" alt="Music video editor with live portrait preview, timed lyrics and configurable styles">
 </p>
 
 ## Installation

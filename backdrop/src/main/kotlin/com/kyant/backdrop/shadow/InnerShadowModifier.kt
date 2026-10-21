@@ -81,6 +81,9 @@ internal class InnerShadowNode(
         if (!isRenderEffectSupported()) return
 
         val shadow = shadow() ?: return
+        // The control still observes its press state above, so the first visible
+        // shadow invalidates normally without recording a transparent idle layer.
+        if (shadow.alpha <= 0f) return
 
         val shadowLayer = shadowLayer
         if (shadowLayer != null) {
