@@ -1,3 +1,7 @@
+# Our Music 1.0.8
+
+Opening the full player smoothly fades the navigation page and playback controls while preserving the app background beneath the glass. A selected background photo stays visible. When no photo is selected, the current song's artwork becomes the player background and fades in with the page.
+
 # Our Music 1.0.7
 
 Exported lyrics flow into place before each saved cue and become fully highlighted at the cue time. Smooth motion and fading replace the delayed settling animation. Wrapped lines, closely spaced cues and seeking use the same song timeline in the live preview and saved video.

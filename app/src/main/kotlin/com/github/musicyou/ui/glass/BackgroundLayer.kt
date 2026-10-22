@@ -15,6 +15,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -32,8 +33,20 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 
 @Composable
-fun AppBackground(settings: BackgroundSettings, modifier: Modifier = Modifier, readabilityOverlay: Color = Color.Transparent) {
-    BackgroundLayer(settings.value, modifier, readabilityOverlay = readabilityOverlay)
+fun AppBackground(
+    settings: BackgroundSettings,
+    modifier: Modifier = Modifier,
+    readabilityOverlay: Color = Color.Transparent,
+    fallbackArtworkUri: String? = null,
+    fallbackArtworkAlpha: Float = 0f,
+) {
+    BackgroundLayer(
+        settings.value,
+        modifier,
+        readabilityOverlay = readabilityOverlay,
+        fallbackArtworkUri = fallbackArtworkUri,
+        fallbackArtworkAlpha = fallbackArtworkAlpha,
+    )
 }
 
 /** Draws the photo itself, so every live glass layer can refract the same moving scene. */
@@ -43,6 +56,8 @@ internal fun BackgroundLayer(
     modifier: Modifier = Modifier,
     onImageSize: (IntSize) -> Unit = {},
     readabilityOverlay: Color = Color.Transparent,
+    fallbackArtworkUri: String? = null,
+    fallbackArtworkAlpha: Float = 0f,
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -100,6 +115,21 @@ internal fun BackgroundLayer(
                     onImageSize(loaded)
                 },
                 onError = { onImageSize(IntSize.Zero) },
+            )
+        }
+        if (appearance.imageUri == null && fallbackArtworkUri != null && fallbackArtworkAlpha > 0f) {
+            AsyncImage(
+                model = remember(fallbackArtworkUri) {
+                    ImageRequest.Builder(context)
+                        .data(fallbackArtworkUri)
+                        .allowHardware(false)
+                        .build()
+                },
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize().graphicsLayer {
+                    alpha = fallbackArtworkAlpha.coerceIn(0f, 1f)
+                },
             )
         }
         // This material is captured with the wallpaper so every refracting
