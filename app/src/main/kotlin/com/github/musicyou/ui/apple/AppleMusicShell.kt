@@ -147,45 +147,45 @@ fun AppleMusicShell(navController: NavHostController, intentAction: String?, exp
         LocalPlayerPadding provides playerPadding) {
         ProvideWallpaperReadability(visibleReadability) {
             Box(Modifier.fillMaxSize()) {
-                Box(Modifier.fillMaxSize()) {
-                    Box(Modifier.fillMaxSize().layerBackdrop(backdrop)) {
-                        Box(Modifier.fillMaxSize().layerBackdrop(wallpaperBackdrop)) {
-                            AppBackground(
-                                background,
-                                Modifier.fillMaxSize(),
-                                fallbackArtworkUri = fallbackArtworkUri,
-                                fallbackArtworkAlpha = artworkAlpha,
-                            )
-                            if (display.value.ambient) media?.let { LiveAmbientBackdrop(it, Modifier.fillMaxSize()) }
-                            if (visibleReadability.overlay.alpha > 0f) Box(Modifier.fillMaxSize().background(visibleReadability.overlay))
+                Box(Modifier.fillMaxSize().layerBackdrop(backdrop)) {
+                    Box(Modifier.fillMaxSize().layerBackdrop(wallpaperBackdrop)) {
+                        AppBackground(
+                            background,
+                            Modifier.fillMaxSize(),
+                            fallbackArtworkUri = fallbackArtworkUri,
+                            fallbackArtworkAlpha = artworkAlpha,
+                        )
+                        if (display.value.ambient) media?.let { LiveAmbientBackdrop(it, Modifier.fillMaxSize()) }
+                        if (visibleReadability.overlay.alpha > 0f) Box(Modifier.fillMaxSize().background(visibleReadability.overlay))
+                    }
+                    Box(Modifier.fillMaxSize().graphicsLayer { alpha = pageAlpha }.modalUnderlay(pageBlocked).statusBarsPadding()) {
+                        CompositionLocalProvider(LocalBackdrop provides wallpaperBackdrop) {
+                            Navigation(navController, legacySheetState, intentAction)
                         }
-                        Box(Modifier.fillMaxSize().graphicsLayer { alpha = pageAlpha }.modalUnderlay(pageBlocked)) {
-                            Box(Modifier.fillMaxSize().statusBarsPadding()) {
-                                CompositionLocalProvider(LocalBackdrop provides wallpaperBackdrop) {
-                                    Navigation(navController, legacySheetState, intentAction)
-                                }
+                    }
+                }
+                Box(Modifier.fillMaxSize().graphicsLayer { alpha = pageAlpha }.modalUnderlay(pageBlocked)) {
+                    CompositionLocalProvider(LocalBackdrop provides wallpaperBackdrop) {
+                        if(!hideTabs) {
+                            Column(Modifier.align(Alignment.BottomCenter).widthIn(max = 680.dp).navigationBarsPadding().padding(horizontal = 12.dp).padding(bottom = 7.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                if(media != null) AppleMiniPlayer(media, { expanded = true })
+                                AppleTabBar(navController)
                             }
-                            if(!hideTabs) {
-                                Column(Modifier.align(Alignment.BottomCenter).widthIn(max = 680.dp).navigationBarsPadding().padding(horizontal = 12.dp).padding(bottom = 7.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    if(media != null) AppleMiniPlayer(media, { expanded = true })
-                                    AppleTabBar(navController)
-                                }
+                        }
+                        if(hideTabs) {
+                            GlassIconButton(onClick = { editingBackground = true }, modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(18.dp).size(52.dp)) {
+                                Icon(Icons.Outlined.Wallpaper, "Customize background", tint = MusicRed)
                             }
-                            if(hideTabs) {
-                                GlassIconButton(onClick = { editingBackground = true }, modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(18.dp).size(52.dp)) {
-                                    Icon(Icons.Outlined.Wallpaper, "Customize background", tint = MusicRed)
-                                }
-                            }
-                            if(updateState.hasAvailableUpdate && updateState.release?.versionName != dismissedUpdate && destination?.hasRoute<Routes.Updates>() != true && !pageBlocked) {
-                                GlassSurface(Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(12.dp).widthIn(max = 580.dp).fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
-                                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        Column(Modifier.weight(1f)) {
-                                            Text("Our Music ${updateState.release?.versionName}", fontWeight = FontWeight.SemiBold)
-                                            Text("A new version is available", fontSize = 12.sp)
-                                        }
-                                        TextButton(onClick = { navController.navigate(Routes.Updates) }) { Text("View", color = MusicRed) }
-                                        IconButton(onClick = { dismissedUpdate = updateState.release?.versionName.orEmpty() }) { Icon(Icons.Outlined.Close, "Dismiss update") }
+                        }
+                        if(updateState.hasAvailableUpdate && updateState.release?.versionName != dismissedUpdate && destination?.hasRoute<Routes.Updates>() != true && !pageBlocked) {
+                            GlassSurface(Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(12.dp).widthIn(max = 580.dp).fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
+                                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text("Our Music ${updateState.release?.versionName}", fontWeight = FontWeight.SemiBold)
+                                        Text("A new version is available", fontSize = 12.sp)
                                     }
+                                    TextButton(onClick = { navController.navigate(Routes.Updates) }) { Text("View", color = MusicRed) }
+                                    IconButton(onClick = { dismissedUpdate = updateState.release?.versionName.orEmpty() }) { Icon(Icons.Outlined.Close, "Dismiss update") }
                                 }
                             }
                         }

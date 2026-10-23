@@ -1,3 +1,7 @@
+# Our Music 1.0.9
+
+Corrects the player background fade so the tab bar and page controls stay outside the backdrop capture they sample. The page and playback controls still fade smoothly while the custom photo or current song artwork remains visible behind the glass.
+
 # Our Music 1.0.8
 
 Opening the full player smoothly fades the navigation page and playback controls while preserving the app background beneath the glass. A selected background photo stays visible. When no photo is selected, the current song's artwork becomes the player background and fades in with the page.
