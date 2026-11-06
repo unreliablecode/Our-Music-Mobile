@@ -1,6 +1,7 @@
 package com.github.musicyou.export
 
 import android.net.Uri
+import com.github.musicyou.audio.visualization.OscilloscopeConfig
 
 enum class VideoAspectRatio { LANDSCAPE, PORTRAIT }
 enum class VideoResolution { HD, FULL_HD }
@@ -49,6 +50,7 @@ data class VideoExportRequest(
     val artworkUri: String? = null,
     val lyrics: List<VideoLyricCue> = emptyList(),
     val config: VideoExportConfig = VideoExportConfig(),
+    val oscilloscopeConfig: OscilloscopeConfig = OscilloscopeConfig(),
     val durationUs: Long = 0L,
 )
 

@@ -2,6 +2,7 @@ package com.github.musicyou.ui.visualization
 
 import android.os.SystemClock
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -10,13 +11,13 @@ import androidx.compose.material.icons.rounded.OpenInFull
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.preferredFrameRate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
@@ -165,13 +166,16 @@ private fun ScopePanel(
 ) {
     VisualizationFrameRate(active = presenting)
     val paths = remember { List(2) { Path() } }
+    val divisionGrid = remember { Path() }
+    val axisGrid = remember { Path() }
+    val minorTicks = remember { Path() }
     val unit = if (config.calibratedVoltsPerFullScale == null) "FS" else "V"
     val factor = config.calibratedVoltsPerFullScale?.toDouble() ?: 1.0
     val triggerStyle = if (config.triggerEdge == ScopeTriggerEdge.RISING) "rising" else "falling"
     val triggerSource = if (config.triggerSource == 0) "L" else "R"
     val verticalLabel = "${scopeNumber(config.fullScalePerDivision * factor)} $unit/div"
     val timebaseLabel = scopeTime(config.timebaseUsPerDivision.toDouble()) + "/div"
-    GlassSurface(modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), tint = ScreenColor.copy(alpha = 0.93f)) {
+    ScopePanelFrame(expanded, modifier) {
         BoxWithConstraints(Modifier.fillMaxWidth()) {
             val showReadouts = expanded || !maxHeight.value.isFinite() || maxHeight >= 140.dp
             val overhead = (if (showReadouts) { if (config.cursorsEnabled) 116.dp else 100.dp } else 84.dp) + if (expanded) 60.dp else 0.dp
@@ -199,7 +203,7 @@ private fun ScopePanel(
                         }
                     }
                     Canvas(
-                        Modifier.weight(1f).height(plotHeight).graphicsLayer().preferredFrameRate(if (presenting) 60f else 0f).testTag("audio-visualization-plot").semantics {
+                        Modifier.weight(1f).height(plotHeight).preferredFrameRate(if (presenting) 60f else 0f).testTag("audio-visualization-plot").semantics {
                             contentDescription = "Digital stereo oscilloscope, ten time divisions and eight amplitude divisions, $timebaseLabel, $verticalLabel, $triggerSource $triggerStyle trigger"
                             stateDescription = status.value
                         },
@@ -207,22 +211,30 @@ private fun ScopePanel(
                         drawRect(ScreenColor)
                         val baseline = size.height / 2f
                         val pixelsPerFullScale = size.height / (8f * config.fullScalePerDivision)
+                        divisionGrid.reset()
+                        axisGrid.reset()
+                        minorTicks.reset()
                         for (division in 0..10) {
                             val x = size.width * division / 10f
-                            drawLine(Color.White.copy(alpha = if (division == 5) 0.27f else 0.10f), Offset(x, 0f), Offset(x, size.height), 0.7.dp.toPx())
+                            divisionGrid.moveTo(x, 0f); divisionGrid.lineTo(x, size.height)
+                            if (division == 5) { axisGrid.moveTo(x, 0f); axisGrid.lineTo(x, size.height) }
                         }
                         for (division in -4..4) {
                             val y = baseline - division * size.height / 8f
-                            drawLine(Color.White.copy(alpha = if (division == 0) 0.27f else 0.10f), Offset(0f, y), Offset(size.width, y), 0.7.dp.toPx())
+                            divisionGrid.moveTo(0f, y); divisionGrid.lineTo(size.width, y)
+                            if (division == 0) { axisGrid.moveTo(0f, y); axisGrid.lineTo(size.width, y) }
                         }
+                        drawPath(divisionGrid, Color.White.copy(alpha = 0.10f), style = Stroke(0.7.dp.toPx()))
+                        drawPath(axisGrid, Color.White.copy(alpha = 0.27f), style = Stroke(0.7.dp.toPx()))
                         for (tick in 0..50) {
                             val x = size.width * tick / 50f
-                            drawLine(Color.White.copy(alpha = 0.23f), Offset(x, baseline - 1.5.dp.toPx()), Offset(x, baseline + 1.5.dp.toPx()), 0.6.dp.toPx())
+                            minorTicks.moveTo(x, baseline - 1.5.dp.toPx()); minorTicks.lineTo(x, baseline + 1.5.dp.toPx())
                         }
                         for (tick in 0..40) {
                             val y = size.height * tick / 40f
-                            drawLine(Color.White.copy(alpha = 0.23f), Offset(size.width / 2f - 1.5.dp.toPx(), y), Offset(size.width / 2f + 1.5.dp.toPx(), y), 0.6.dp.toPx())
+                            minorTicks.moveTo(size.width / 2f - 1.5.dp.toPx(), y); minorTicks.lineTo(size.width / 2f + 1.5.dp.toPx(), y)
                         }
+                        drawPath(minorTicks, Color.White.copy(alpha = 0.23f), style = Stroke(0.6.dp.toPx()))
                         clipRect {
                             val triggerY = baseline - config.triggerLevel * pixelsPerFullScale
                             drawLine(LeftTrace.copy(alpha = 0.22f), Offset(0f, triggerY), Offset(size.width, triggerY),
@@ -239,9 +251,13 @@ private fun ScopePanel(
                                     if (point == 0) path.moveTo(x, y) else path.lineTo(x, y)
                                 }
                                 val color = if (index == 0) LeftTrace else RightTrace
-                                drawPath(path, color.copy(alpha = 0.06f), style = Stroke(5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
-                                drawPath(path, color.copy(alpha = 0.18f), style = Stroke(2.8.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
-                                drawPath(path, color.copy(alpha = 0.96f), style = Stroke(1.05.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+                                if (expanded) {
+                                    drawPath(path, color.copy(alpha = 0.15f), style = Stroke(2.6.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Bevel))
+                                } else {
+                                    drawPath(path, color.copy(alpha = 0.06f), style = Stroke(5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+                                    drawPath(path, color.copy(alpha = 0.18f), style = Stroke(2.8.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+                                }
+                                drawPath(path, color.copy(alpha = 0.96f), style = Stroke(1.05.dp.toPx(), cap = StrokeCap.Round, join = if (expanded) StrokeJoin.Bevel else StrokeJoin.Round))
                             }
                             if (config.cursorsEnabled) {
                                 for ((cursor, color) in listOf(config.cursorA to Color(0xFFFFE49B), config.cursorB to Color(0xFFF6B4EA))) {
@@ -276,6 +292,27 @@ private fun ScopePanel(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ScopePanelFrame(expanded: Boolean, modifier: Modifier, content: @Composable () -> Unit) {
+    val shape = RoundedCornerShape(20.dp)
+    if (expanded) {
+        // The panel is almost opaque and covers a large area. A live lens/blur here
+        // costs a full-window backdrop pass while revealing almost none of it.
+        Surface(
+            modifier = modifier.fillMaxWidth(),
+            shape = shape,
+            color = ScreenColor.copy(alpha = 0.97f),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
+            shadowElevation = 12.dp,
+            content = content,
+        )
+    } else {
+        GlassSurface(modifier.fillMaxWidth(), shape = shape, tint = ScreenColor.copy(alpha = 0.93f)) {
+            content()
         }
     }
 }

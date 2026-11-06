@@ -176,7 +176,7 @@ internal fun LiveVideoPreviewSurface(
     DisposableEffect(rendererOwner) { onDispose { rendererOwner.close() } }
     // Style values are passed directly into each draw; only asset/layout changes reload images.
     val assetRequest = remember(request.mediaId, request.title, request.artist, request.artworkUri, request.lyrics, request.durationUs,
-        request.config.aspectRatio, request.config.background, request.config.customBackgroundUri) { request }
+        request.oscilloscopeConfig, request.config.aspectRatio, request.config.background, request.config.customBackgroundUri) { request }
     LaunchedEffect(assetRequest, size, enabled) {
         renderer = null
         rendererOwner.replace(null)

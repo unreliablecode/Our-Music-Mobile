@@ -1,3 +1,9 @@
+# Our Music 1.1.0
+
+The expanded oscilloscope avoids a full-window glass blur behind its nearly opaque panel, removes an unnecessary graphics layer and draws its grid with fewer paths. The trace keeps its bright core while using a lighter glow at expanded size.
+
+Oscilloscope video preview and export now follow the saved Timebase and Amplitude settings, including trigger settings and voltage calibration. The displayed divisions, trace capture and scale labels use those settings instead of fixed defaults.
+
 # Our Music 1.0.9
 
 Corrects the player background fade so the tab bar and page controls stay outside the backdrop capture they sample. The page and playback controls still fade smoothly while the custom photo or current song artwork remains visible behind the glass.

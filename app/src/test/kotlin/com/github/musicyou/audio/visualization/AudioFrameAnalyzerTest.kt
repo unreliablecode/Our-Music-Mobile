@@ -121,6 +121,23 @@ class AudioFrameAnalyzerTest {
     }
 
     @Test
+    fun oscilloscopeAnalyzerAppliesTheRequestedTimebaseAndAmplitudeScale() {
+        val requested = OscilloscopeConfig(
+            timebaseUsPerDivision = 200,
+            fullScalePerDivision = 0.5f,
+            calibratedVoltsPerFullScale = 2f,
+        )
+
+        val scope = AudioFrameAnalyzer(48_000, 1, oscilloscopeConfig = requested)
+            .analyze(tone(48_000, 1_000.0, 0.5f)).oscilloscope
+
+        assertEquals("The selected timebase sets all ten export divisions", 2_000L, scope.durationUs)
+        assertEquals(200, scope.configuration.timebaseUsPerDivision)
+        assertEquals(0.5f, scope.configuration.fullScalePerDivision, 0f)
+        assertEquals(2f, scope.configuration.calibratedVoltsPerFullScale!!, 0f)
+    }
+
+    @Test
     fun oscilloscopeKeepsStereoPhaseAndDoesNotAnimateUnchangedSamples() {
         val mono = tone(48_000, 440.0, 0.6f)
         val samples = FloatArray(mono.size * 2) { index -> if (index % 2 == 0) mono[index / 2] else -mono[index / 2] }

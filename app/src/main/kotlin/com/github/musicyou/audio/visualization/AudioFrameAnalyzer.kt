@@ -18,6 +18,7 @@ class AudioFrameAnalyzer(
     private val fftSize: Int = WINDOW_SIZE,
     private val bandCount: Int = 32,
     private val waveformPoints: Int = 256,
+    private val oscilloscopeConfig: OscilloscopeConfig = OscilloscopeConfig(),
 ) {
     init {
         require(sampleRate >= 8_000 && channelCount in 1..8)
@@ -113,7 +114,7 @@ class AudioFrameAnalyzer(
         val channels = List(min(channelCount, 2)) { channel ->
             AudioOscilloscopeChannel(FloatArray(fftSize) { index -> finiteSample(samples[index * channelCount + channel]) })
         }
-        return OscilloscopeAcquisition.capture(channels, sampleRate)
+        return OscilloscopeAcquisition.capture(channels, sampleRate, oscilloscopeConfig)
     }
 
     private fun fft(real: DoubleArray, imaginary: DoubleArray) {

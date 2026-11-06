@@ -141,7 +141,7 @@ object VideoExporter {
             graphics = EncoderCanvasSurface(encoder.createInputSurface(), width, height)
             encoder.start(); encoderStarted = true
             painter = VideoFramePainter.create(context, request.copy(durationUs = pcm.durationUs))
-            val analyzer = AudioFrameAnalyzer(pcm.sampleRate, pcm.channels)
+            val analyzer = AudioFrameAnalyzer(pcm.sampleRate, pcm.channels, oscilloscopeConfig = request.oscilloscopeConfig)
             val sampleWindow = FloatArray(AudioFrameAnalyzer.WINDOW_SIZE * pcm.channels)
             val sampleBytes = ByteArray(sampleWindow.size * 2)
             val info = MediaCodec.BufferInfo()

@@ -18,6 +18,7 @@ import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
 import androidx.exifinterface.media.ExifInterface
+import com.github.musicyou.audio.visualization.AudioOscilloscopeFrame
 import com.github.musicyou.audio.visualization.AudioVisualizationFrame
 import com.github.musicyou.audio.visualization.CircularSpectrumGeometry
 import com.github.musicyou.audio.visualization.SphereInteriorGeometry
@@ -49,6 +50,9 @@ internal class VideoFramePainter private constructor(
     private val filamentPath = Path()
     private val displaySpectrum = DisplaySpectrum()
     private val progressOverlay = VideoProgressOverlay()
+    private var lastScopeSequence = Long.MIN_VALUE
+    private var lastScopeSource: AudioVisualizationFrame? = null
+    private var lastScopeFrame: AudioOscilloscopeFrame? = null
     private val cues = VideoLyricMotion.normalize(request.lyrics)
     private val layouts = HashMap<Int, StaticLayout>()
     private val titleLayout = layout(request.title, 30f * unit, width - (96f * unit).toInt(), Typeface.BOLD)
@@ -178,15 +182,18 @@ internal class VideoFramePainter private constructor(
     private fun drawWaveform(frame: AudioVisualizationFrame?, cy: Float, scope: Boolean) {
         val left = width * .10f; val right = width * .90f
         val amplitude = height * .18f * config.visualizerScale
-        val scopeFrame = frame?.oscilloscope
+        val scopeFrame = if (scope) scopeFrame(frame) else frame?.oscilloscope
         if (scope) {
             paint.color = 0x3089E8D0; paint.strokeWidth = unit
             repeat(11) { val x = left + (right - left) * it / 10; canvas.drawLine(x, cy - amplitude, x, cy + amplitude, paint) }
             repeat(9) { val y = cy - amplitude + amplitude * 2 * it / 8; canvas.drawLine(left, y, right, y, paint) }
             text.textSize = 13f * unit; text.textAlign = Paint.Align.LEFT; text.color = 0xC0FFFFFF.toInt()
-            val scale = scopeFrame?.configuration?.fullScalePerDivision ?: .25f
-            val timebase = (scopeFrame?.configuration?.timebaseUsPerDivision ?: 1000) / 1000f
-            canvas.drawText("$scale FS/div  ·  $timebase ms/div", left, cy - amplitude - 14f * unit, text)
+            val scale = scopeFrame?.configuration?.fullScalePerDivision ?: request.oscilloscopeConfig.fullScalePerDivision
+            val voltsPerFullScale = scopeFrame?.configuration?.calibratedVoltsPerFullScale
+            val value = scale * (voltsPerFullScale ?: 1f)
+            val unitLabel = if (voltsPerFullScale == null) "FS" else "V"
+            val timebase = (scopeFrame?.configuration?.timebaseUsPerDivision ?: request.oscilloscopeConfig.timebaseUsPerDivision) / 1000f
+            canvas.drawText("$value $unitLabel/div  ·  $timebase ms/div", left, cy - amplitude - 14f * unit, text)
         }
         val waves = frame?.waveformChannels.orEmpty().take(2)
         val channels = if (scope) scopeFrame?.channels.orEmpty().take(2) else emptyList()
@@ -205,7 +212,7 @@ internal class VideoFramePainter private constructor(
                 } else index.toFloat() / (count - 1)
                 val x = left + (right - left) * fraction
                 if (scope) {
-                    val scale = (scopeFrame?.configuration?.fullScalePerDivision ?: .25f) * 4
+                    val scale = (scopeFrame?.configuration?.fullScalePerDivision ?: request.oscilloscopeConfig.fullScalePerDivision) * 4
                     val y = cy - channel!![index] / scale * amplitude
                     if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
                 } else {
@@ -225,6 +232,15 @@ internal class VideoFramePainter private constructor(
                 canvas.drawText(if (channelIndex == 0) "L" else "R", left, laneCenter - laneAmplitude - 4f * unit, text)
             }
         }
+    }
+
+    private fun scopeFrame(frame: AudioVisualizationFrame?): AudioOscilloscopeFrame? {
+        if (frame == null) return null
+        if (lastScopeSource === frame && lastScopeSequence == frame.sequence) return lastScopeFrame
+        lastScopeSource = frame
+        lastScopeSequence = frame.sequence
+        lastScopeFrame = videoOscilloscopeCapture(frame, request.oscilloscopeConfig)
+        return lastScopeFrame
     }
 
     private fun drawLyrics(timeUs: Long) {

@@ -78,6 +78,7 @@ import com.github.musicyou.ui.glass.GlassIconButton
 import com.github.musicyou.ui.glass.GlassSurface
 import com.github.musicyou.ui.glass.GlassToggle
 import com.github.musicyou.ui.glass.GlassSlider
+import com.github.musicyou.ui.visualization.readOscilloscopeConfig
 import com.github.musicyou.utils.fetchAndSaveLyrics
 import com.github.musicyou.utils.parseLrc
 import com.github.musicyou.utils.preferences
@@ -112,6 +113,7 @@ fun VideoExportDialog(media: MediaItem, durationMs: Long, onDismiss: () -> Unit)
     var message by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val settingsScroll = rememberScrollState()
+    val oscilloscopeConfig = remember(application) { readOscilloscopeConfig(application) }
     LaunchedEffect(config) { delay(180); saveConfig(application, config) }
     val latestConfig by rememberUpdatedState(config)
     DisposableEffect(application) { onDispose { saveConfig(application, latestConfig) } }
@@ -127,7 +129,7 @@ fun VideoExportDialog(media: MediaItem, durationMs: Long, onDismiss: () -> Unit)
             settingsScroll.animateScrollTo(settingsScroll.maxValue)
         }
     }
-    val request = remember(media.mediaId, media.mediaMetadata, config, cues, includeLyrics, durationMs) {
+    val request = remember(media.mediaId, media.mediaMetadata, config, oscilloscopeConfig, cues, includeLyrics, durationMs) {
         VideoExportRequest(
             mediaId = media.mediaId,
             title = media.mediaMetadata.title?.toString().orEmpty().ifBlank { "Untitled song" },
@@ -135,6 +137,7 @@ fun VideoExportDialog(media: MediaItem, durationMs: Long, onDismiss: () -> Unit)
             artworkUri = media.mediaMetadata.artworkUri?.let { it.thumbnail(1600)?.toString() },
             lyrics = if (includeLyrics) cues else emptyList(),
             config = config,
+            oscilloscopeConfig = oscilloscopeConfig,
             durationUs = durationMs.coerceIn(0L, Long.MAX_VALUE / 1_000L) * 1_000L,
         )
     }
