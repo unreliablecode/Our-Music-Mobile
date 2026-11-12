@@ -10,6 +10,7 @@ import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -55,6 +56,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.MediaItem
@@ -153,10 +155,12 @@ fun FollowLyrics(media: MediaItem, modifier: Modifier = Modifier) {
         )
     }
 
-    Column(modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(top = 7.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+    BoxWithConstraints(modifier.fillMaxSize()) {
+        val compact = maxHeight < 430.dp || maxWidth < 380.dp || LocalDensity.current.fontScale > 1.25f
+        Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(top = if (compact) 2.dp else 7.dp, bottom = if (compact) 4.dp else 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("Lyrics", fontSize = 25.sp, fontWeight = FontWeight.Bold)
+                Text("Lyrics", fontSize = if (compact) 20.sp else 25.sp, fontWeight = FontWeight.Bold)
                 Text(
                     when {
                         timeline.lines.isNotEmpty() && follow.browsing -> "Browsing lyrics · Tap a line to seek"
@@ -167,18 +171,20 @@ fun FollowLyrics(media: MediaItem, modifier: Modifier = Modifier) {
                         outcome?.networkError == true -> "Can't connect. Saved lyrics stay available."
                         else -> "Lyrics aren't available for this track"
                     },
-                    fontSize = 11.sp,
+                    fontSize = if (compact) 10.sp else 11.sp,
                     color = MusicSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
             if (follow.browsing) {
                 androidx.compose.material3.TextButton(onClick = follow::resume) {
-                    Text("Follow", color = MusicRed, fontSize = 12.sp)
+                    Text("Follow", color = MusicRed, fontSize = if (compact) 11.sp else 12.sp)
                 }
             }
-            if (fetching && stored == null) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-            else GlassIconButton(onClick = { retry++ }, modifier = Modifier.size(38.dp)) { Icon(Icons.Rounded.Refresh, "Fetch lyrics again", Modifier.size(18.dp)) }
-            GlassIconButton(onClick = { editing = true }, modifier = Modifier.padding(start = 6.dp).size(38.dp)) { Icon(Icons.Rounded.Edit, "Edit lyrics", Modifier.size(18.dp)) }
+            if (fetching && stored == null) CircularProgressIndicator(Modifier.size(if (compact) 16.dp else 20.dp), strokeWidth = 2.dp)
+            else GlassIconButton(onClick = { retry++ }, modifier = Modifier.size(if (compact) 34.dp else 38.dp)) { Icon(Icons.Rounded.Refresh, "Fetch lyrics again", Modifier.size(18.dp)) }
+            GlassIconButton(onClick = { editing = true }, modifier = Modifier.padding(start = if (compact) 2.dp else 6.dp).size(if (compact) 34.dp else 38.dp)) { Icon(Icons.Rounded.Edit, "Edit lyrics", Modifier.size(18.dp)) }
         }
 
         if (timeline.lines.isNotEmpty()) {
@@ -188,33 +194,35 @@ fun FollowLyrics(media: MediaItem, modifier: Modifier = Modifier) {
                 style = lyricsStyle,
                 follow = follow,
                 onSeek = { index -> player.seekTo(timeline.seekPosition(index, delayMs.toLong())) },
+                compact = compact,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
             )
-            GlassSurface(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 8.dp)) {
-                    Row(Modifier.fillMaxWidth().glassClickable { showDelay = !showDelay }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Rounded.Schedule, "Lyrics timing", Modifier.size(17.dp))
-                        Text("  Lyrics delay", Modifier.weight(1f), fontSize = 13.sp)
-                        Text(formatLyricsDelay(delayMs), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            GlassSurface(Modifier.fillMaxWidth().padding(vertical = if (compact) 3.dp else 10.dp)) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = if (compact) 9.dp else 13.dp, vertical = if (compact) 4.dp else 8.dp)) {
+                    Row(Modifier.fillMaxWidth().glassClickable { showDelay = !showDelay }.padding(vertical = if (compact) 2.dp else 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Rounded.Schedule, "Lyrics timing", Modifier.size(if (compact) 15.dp else 17.dp))
+                        Text("  Lyrics delay", Modifier.weight(1f), fontSize = if (compact) 12.sp else 13.sp)
+                        Text(formatLyricsDelay(delayMs), fontSize = if (compact) 12.sp else 13.sp, fontWeight = FontWeight.SemiBold)
                     }
                     if (showDelay) {
-                        Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                            GlassIconButton(onClick = { delayMs = (delayMs - 250).coerceAtLeast(-10_000) }, modifier = Modifier.size(34.dp)) { Icon(Icons.Rounded.Remove, "Show lyrics 0.25 seconds earlier", Modifier.size(17.dp)) }
-                            Text("Positive delay shows words later", fontSize = 10.sp)
-                            GlassIconButton(onClick = { delayMs = (delayMs + 250).coerceAtMost(10_000) }, modifier = Modifier.size(34.dp)) { Icon(Icons.Rounded.Add, "Show lyrics 0.25 seconds later", Modifier.size(17.dp)) }
+                        Row(Modifier.fillMaxWidth().padding(top = if (compact) 2.dp else 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                            GlassIconButton(onClick = { delayMs = (delayMs - 250).coerceAtLeast(-10_000) }, modifier = Modifier.size(if (compact) 30.dp else 34.dp)) { Icon(Icons.Rounded.Remove, "Show lyrics 0.25 seconds earlier", Modifier.size(17.dp)) }
+                            Text("Positive delay shows words later", fontSize = if (compact) 9.sp else 10.sp, maxLines = 1)
+                            GlassIconButton(onClick = { delayMs = (delayMs + 250).coerceAtMost(10_000) }, modifier = Modifier.size(if (compact) 30.dp else 34.dp)) { Icon(Icons.Rounded.Add, "Show lyrics 0.25 seconds later", Modifier.size(17.dp)) }
                         }
-                        Text("Reset", modifier = Modifier.align(Alignment.CenterHorizontally).glassClickable { delayMs = 0 }.padding(7.dp), fontSize = 12.sp, color = MusicRed)
+                        Text("Reset", modifier = Modifier.align(Alignment.CenterHorizontally).glassClickable { delayMs = 0 }.padding(if (compact) 4.dp else 7.dp), fontSize = if (compact) 11.sp else 12.sp, color = MusicRed)
                     }
                 }
             }
         } else if (!stored?.fixed.isNullOrBlank()) {
-            Text(stored?.fixed.orEmpty(), fontSize = 24.sp, lineHeight = 35.sp, fontWeight = FontWeight.Medium,
-                modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(vertical = 12.dp))
+            Text(stored?.fixed.orEmpty(), fontSize = if (compact) 19.sp else 24.sp, lineHeight = if (compact) 28.sp else 35.sp, fontWeight = FontWeight.Medium,
+                modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(vertical = if (compact) 5.dp else 12.dp))
         } else {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 if (fetching) CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 2.dp)
-                else Text(if (outcome?.instrumental == true) "♪" else "Try again when you're connected.", fontSize = if (outcome?.instrumental == true) 56.sp else 15.sp, color = MusicSecondary)
+                else Text(if (outcome?.instrumental == true) "♪" else "Try again when you're connected.", fontSize = if (outcome?.instrumental == true) 56.sp else if (compact) 13.sp else 15.sp, color = MusicSecondary)
             }
+        }
         }
     }
 }
@@ -236,6 +244,7 @@ internal fun TimedLyricsList(
     style: LyricsStyle,
     follow: LyricsFollowState,
     onSeek: (Int) -> Unit,
+    compact: Boolean = false,
     modifier: Modifier = Modifier,
     list: LazyListState = rememberLazyListState(),
 ) {
@@ -274,11 +283,11 @@ internal fun TimedLyricsList(
     LazyColumn(
         state = list,
         contentPadding = if (smooth) PaddingValues(
-            top = maxOf(20.dp, viewportDp / 3 - 20.dp),
-            bottom = maxOf(200.dp, viewportDp * 2 / 3),
-        ) else PaddingValues(top = 20.dp, bottom = 200.dp),
+            top = maxOf(if (compact) 12.dp else 20.dp, viewportDp / 3 - if (compact) 12.dp else 20.dp),
+            bottom = maxOf(if (compact) 72.dp else 200.dp, viewportDp * 2 / 3),
+        ) else PaddingValues(top = if (compact) 12.dp else 20.dp, bottom = if (compact) 72.dp else 200.dp),
         modifier = modifier.testTag("timed-lyrics").onSizeChanged { viewportHeight = it.height },
-        verticalArrangement = Arrangement.spacedBy(13.dp),
+        verticalArrangement = Arrangement.spacedBy(if (compact) 7.dp else 13.dp),
     ) {
         itemsIndexed(timeline.lines, key = { index, line -> "${line.timeMs}_$index" }) { index, line ->
             val active = index == activeIndex
@@ -299,9 +308,9 @@ internal fun TimedLyricsList(
             )
             MaterialText(
                 text = line.text.ifBlank { "♪" },
-                fontSize = if (smooth || active) 30.sp else 27.sp,
+                fontSize = if (compact) { if (smooth || active) 22.sp else 20.sp } else if (smooth || active) 30.sp else 27.sp,
                 fontWeight = if (smooth) FontWeight.Bold else if (active) FontWeight.Bold else FontWeight.Medium,
-                lineHeight = 37.sp,
+                lineHeight = if (compact) 29.sp else 37.sp,
                 color = color,
                 modifier = Modifier.fillMaxWidth()
                     .testTag("lyric-line-$index")
@@ -316,7 +325,7 @@ internal fun TimedLyricsList(
                         follow.resume()
                         onSeek(index)
                     }
-                    .padding(vertical = 4.dp),
+                    .padding(vertical = if (compact) 2.dp else 4.dp),
             )
         }
     }

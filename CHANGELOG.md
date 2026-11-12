@@ -1,3 +1,7 @@
+# Our Music 1.1.1
+
+The expanded player uses a two pane layout in landscape, keeping lyrics visible beside playback controls. Short screens use a compact player layout, and the lyrics view reduces fixed spacing, control sizes and timed line padding to preserve room for the lyrics.
+
 # Our Music 1.1.0
 
 The expanded oscilloscope avoids a full-window glass blur behind its nearly opaque panel, removes an unnecessary graphics layer and draws its grid with fewer paths. The trace keeps its bright core while using a lighter glow at expanded size.
